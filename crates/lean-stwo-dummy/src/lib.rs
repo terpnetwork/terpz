@@ -1,0 +1,436 @@
+//! DummyStwo — first Lean host arm (v1 gate).
+//!
+//! One AIR: public inputs `(a, b)` in M31; statement `c = dummy_m31_hash(a, b)`.
+//! This is **not** an always-true production stub: a one-bit flip of the proof
+//! must reject. Not Lean balance-walk. Not zkids 1–6.
+//!
+//! Footer: `prover_id = 2` (`CircuitType::Stwo`), `curve_id = 5` (`M31`).
+//!
+//! Host (x/leanval FinalizeBlock) should charge
+//! `ConsumeGas(STWO_DUMMY_VERIFY_GAS, "stwo dummy verify")` **before** calling
+//! [`Verifier::verify_dummy`]. Proofs larger than [`MAX_PROOF_BYTES`] are invalid
+//! and must not enter the dummy AIR.
+
+/// Matches `CircuitType::Stwo` in the vm footer table (PROVER-IDS.md).
+pub const CIRCUIT_TYPE_STWO: u8 = 2;
+
+/// Matches `CurveType::M31` / Circle field (`p = 2^31 − 1`).
+pub const CURVE_TYPE_M31: u8 = 5;
+
+/// Mersenne-31 prime.
+pub const M31_P: u32 = (1 << 31) - 1;
+
+/// Host cap: too-big proof → invalid, no verify (DUMMY-STWO.md).
+pub const MAX_PROOF_BYTES: usize = 2 * 1024 * 1024;
+
+/// Placeholder gas units until a bench on a pinned `stwo` rev fills a real number.
+/// Charge this **before** the rust call (`ConsumeGas(..., "stwo dummy verify")`).
+pub const STWO_DUMMY_VERIFY_GAS: u64 = 150_000;
+
+/// Wire magic so a random blob is not silently accepted.
+const MAGIC: &[u8; 4] = b"DSTW";
+
+/// Real S-two wire prefix. Must not equal Dummy `DSTW`.
+pub const STWO_MAGIC: &[u8; 4] = b"STWO";
+
+/// Fixed dummy-proof body length (header + two M31 + claimed hash).
+pub const DUMMY_PROOF_LEN: usize = 4 + 1 + 1 + 4 + 4 + 4;
+
+/// `CircuitType` — one verifier binary + one wire format. Fail-closed `from_u8`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CircuitType {
+    Plonkish = 0,
+    Groth16 = 1,
+    Stwo = 2,
+}
+
+impl CircuitType {
+    pub fn from_u8(v: u8) -> Result<Self, VerifyError> {
+        match v {
+            0 => Ok(Self::Plonkish),
+            1 => Ok(Self::Groth16),
+            2 => Ok(Self::Stwo),
+            _ => Err(VerifyError::UnsupportedCircuitType(v)),
+        }
+    }
+
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+/// Curve / field id. `5` is M31 / Circle, not another Pasta circuit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CurveType {
+    Pasta = 0,
+    Bn254 = 4,
+    M31 = 5,
+}
+
+impl CurveType {
+    pub fn from_u8(v: u8) -> Result<Self, VerifyError> {
+        match v {
+            0 => Ok(Self::Pasta),
+            4 => Ok(Self::Bn254),
+            5 => Ok(Self::M31),
+            _ => Err(VerifyError::UnsupportedCurve(v)),
+        }
+    }
+
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+/// VK arm for the dummy host. Real S-two params land when the crate is pinned.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AnyVerifyingKey {
+    Stwo(DummyStwoVk),
+}
+
+/// Instance arm: public `(a, b, c)` over M31.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AnyInstance {
+    Stwo { a: M31, b: M31, c: M31 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DummyStwoVk {
+    pub prover_id: u8,
+    pub curve_id: u8,
+}
+
+impl Default for DummyStwoVk {
+    fn default() -> Self {
+        Self {
+            prover_id: CIRCUIT_TYPE_STWO,
+            curve_id: CURVE_TYPE_M31,
+        }
+    }
+}
+
+/// M31 field element (`0 .. 2^31-1`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct M31(pub u32);
+
+impl M31 {
+    pub fn new(raw: u32) -> Result<Self, VerifyError> {
+        if raw >= M31_P {
+            return Err(VerifyError::NotInM31(raw));
+        }
+        Ok(Self(raw))
+    }
+
+    pub fn from_le_bytes(b: [u8; 4]) -> Result<Self, VerifyError> {
+        Self::new(u32::from_le_bytes(b))
+    }
+
+    pub fn to_le_bytes(self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
+
+    fn add(self, other: Self) -> Self {
+        let s = (self.0 as u64 + other.0 as u64) % (M31_P as u64);
+        Self(s as u32)
+    }
+
+    fn mul(self, other: Self) -> Self {
+        let p = ((self.0 as u64) * (other.0 as u64)) % (M31_P as u64);
+        Self(p as u32)
+    }
+}
+
+/// Domain-separated mix: `c = α·a + β·b + γ` in M31 (odd constants, not identity).
+/// Named DummyStwo so this is never confused with a production always-true stub.
+pub fn dummy_m31_hash(a: M31, b: M31) -> M31 {
+    const ALPHA: M31 = M31(3);
+    const BETA: M31 = M31(5);
+    const GAMMA: M31 = M31(7);
+    ALPHA.mul(a).add(BETA.mul(b)).add(GAMMA)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VerifyError {
+    ProofTooLarge { len: usize },
+    BadMagic,
+    Truncated,
+    UnsupportedCircuitType(u8),
+    UnsupportedCurve(u8),
+    WrongProverId { got: u8 },
+    WrongCurveId { got: u8 },
+    NotInM31(u32),
+    PublicInputMismatch,
+    StatementFalse,
+    StwoVerify,
+}
+
+impl std::fmt::Display for VerifyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ProofTooLarge { len } => write!(f, "proof too large: {len} > {MAX_PROOF_BYTES}"),
+            Self::BadMagic => write!(f, "bad DummyStwo magic"),
+            Self::Truncated => write!(f, "truncated DummyStwo proof"),
+            Self::UnsupportedCircuitType(v) => write!(f, "unsupported CircuitType {v}"),
+            Self::UnsupportedCurve(v) => write!(f, "UnsupportedCurve {v}"),
+            Self::WrongProverId { got } => write!(f, "wrong prover_id {got} (want 2/Stwo)"),
+            Self::WrongCurveId { got } => write!(f, "wrong curve_id {got} (want 5/M31)"),
+            Self::NotInM31(v) => write!(f, "{v} not in M31"),
+            Self::PublicInputMismatch => write!(f, "public inputs do not match proof"),
+            Self::StatementFalse => write!(f, "c != dummy_m31_hash(a,b)"),
+            Self::StwoVerify => write!(f, "stwo verify failed"),
+        }
+    }
+}
+
+impl std::error::Error for VerifyError {}
+
+/// Matches `x/leanval/keeper/abci.go` `Verifier::VerifyDummy`.
+///
+/// Host 0 / `Ok(true)` = valid dummy proof.
+/// Host 1 / `Ok(false)` or `Err` = reject (block invalid if required inject).
+pub trait Verifier {
+    fn verify_dummy(
+        &self,
+        proof: &[u8],
+        a: u32,
+        b: u32,
+        claimed_hash: u32,
+    ) -> Result<bool, VerifyError>;
+}
+
+/// DummyStwo verifier: CPU only. Not always-true.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DummyStwo;
+
+impl DummyStwo {
+    /// Bind period + weight + subject into (a,b). Forged weight fails verify if instances checked.
+    pub fn prove_bound(period: u64, subject: &[u8], weight: i64) -> Vec<u8> {
+        let a = M31((period as u32) % M31_P);
+        let mut mix: u32 = 0;
+        let wb = weight.to_be_bytes();
+        for (i, x) in wb.iter().enumerate() {
+            mix ^= (*x as u32) << (8 * (i % 4));
+        }
+        for (i, x) in subject.iter().enumerate() {
+            mix ^= (*x as u32) << (8 * (i % 4));
+        }
+        let b = M31(mix % M31_P);
+        Self::prove(a, b)
+    }
+
+    pub fn prove(a: M31, b: M31) -> Vec<u8> {
+        let c = dummy_m31_hash(a, b);
+        let mut out = Vec::with_capacity(DUMMY_PROOF_LEN);
+        out.extend_from_slice(MAGIC);
+        out.push(CIRCUIT_TYPE_STWO);
+        out.push(CURVE_TYPE_M31);
+        out.extend_from_slice(&a.to_le_bytes());
+        out.extend_from_slice(&b.to_le_bytes());
+        out.extend_from_slice(&c.to_le_bytes());
+        out
+    }
+}
+
+impl Verifier for DummyStwo {
+    fn verify_dummy(
+        &self,
+        proof: &[u8],
+        a: u32,
+        b: u32,
+        claimed_hash: u32,
+    ) -> Result<bool, VerifyError> {
+        if proof.len() > MAX_PROOF_BYTES {
+            return Err(VerifyError::ProofTooLarge { len: proof.len() });
+        }
+        if proof.len() < DUMMY_PROOF_LEN {
+            return Err(VerifyError::Truncated);
+        }
+        if &proof[0..4] != MAGIC {
+            return Err(VerifyError::BadMagic);
+        }
+
+        let prover_id = proof[4];
+        let curve_id = proof[5];
+
+        // Fail-closed: wrong prover_id is never Ok(true).
+        match CircuitType::from_u8(prover_id) {
+            Ok(CircuitType::Stwo) => {}
+            Ok(_) => return Err(VerifyError::WrongProverId { got: prover_id }),
+            Err(e) => return Err(e),
+        }
+        match CurveType::from_u8(curve_id) {
+            Ok(CurveType::M31) => {}
+            Ok(_) => return Err(VerifyError::WrongCurveId { got: curve_id }),
+            Err(e) => return Err(e),
+        }
+
+        let pa = M31::from_le_bytes(proof[6..10].try_into().unwrap())?;
+        let pb = M31::from_le_bytes(proof[10..14].try_into().unwrap())?;
+        let pc = M31::from_le_bytes(proof[14..18].try_into().unwrap())?;
+
+        let pub_a = M31::new(a)?;
+        let pub_b = M31::new(b)?;
+        let pub_c = M31::new(claimed_hash)?;
+
+        if pa != pub_a || pb != pub_b || pc != pub_c {
+            return Err(VerifyError::PublicInputMismatch);
+        }
+
+        if dummy_m31_hash(pa, pb) != pc {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+}
+
+#[cfg(feature = "real-stwo")]
+mod real;
+
+#[cfg(feature = "real-stwo")]
+pub use real::{prove_ab_hash, verify_ab_hash, RealStwo};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn circuit_type_stwo_is_two() {
+        assert_eq!(CircuitType::Stwo.to_u8(), 2);
+        assert_eq!(CircuitType::from_u8(2).unwrap(), CircuitType::Stwo);
+        assert!(CircuitType::from_u8(99).is_err());
+    }
+
+    #[test]
+    fn curve_type_m31_is_five() {
+        assert_eq!(CurveType::M31.to_u8(), 5);
+        assert_eq!(CurveType::from_u8(5).unwrap(), CurveType::M31);
+        assert!(matches!(
+            CurveType::from_u8(3),
+            Err(VerifyError::UnsupportedCurve(3))
+        ));
+    }
+
+    /// Valid dummy proof → Ok(true) (host 0).
+    #[test]
+    fn dummy_stwo_valid_ok() {
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let proof = DummyStwo::prove(a, b);
+        assert_eq!(
+            DummyStwo.verify_dummy(&proof, a.0, b.0, c.0).unwrap(),
+            true
+        );
+    }
+
+    /// Flip one proof byte → Ok(false) or Err (never Ok(true)).
+    #[test]
+    fn dummy_stwo_bitflip_fail() {
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let mut proof = DummyStwo::prove(a, b);
+        // Flip a low bit of claimed `c` inside the proof (byte 14).
+        proof[14] ^= 1;
+        let flipped_c = u32::from_le_bytes(proof[14..18].try_into().unwrap());
+        let res = DummyStwo.verify_dummy(&proof, a.0, b.0, flipped_c);
+        match res {
+            Ok(false) => {}
+            Err(_) => {}
+            Ok(true) => panic!("bitflip must not verify"),
+        }
+        // Public inputs still the honest ones: mismatch or false statement.
+        let res2 = DummyStwo.verify_dummy(&proof, a.0, b.0, c.0);
+        assert!(res2 != Ok(true), "honest pubs + flipped proof must reject");
+    }
+
+    /// Wrong prover_id blob → fail closed (not Ok(true)).
+    #[test]
+    fn dummy_stwo_wrong_prover_id_fail_closed() {
+        let a = M31::new(1).unwrap();
+        let b = M31::new(2).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let mut proof = DummyStwo::prove(a, b);
+        proof[4] = 0; // Plonkish
+        let err = DummyStwo
+            .verify_dummy(&proof, a.0, b.0, c.0)
+            .unwrap_err();
+        assert!(matches!(err, VerifyError::WrongProverId { got: 0 }));
+
+        proof[4] = 99;
+        let err = DummyStwo
+            .verify_dummy(&proof, a.0, b.0, c.0)
+            .unwrap_err();
+        assert!(matches!(err, VerifyError::UnsupportedCircuitType(99)));
+    }
+
+    #[test]
+    fn dummy_stwo_oversize_proof_rejected() {
+        let huge = vec![0u8; MAX_PROOF_BYTES + 1];
+        assert!(matches!(
+            DummyStwo.verify_dummy(&huge, 1, 2, 3),
+            Err(VerifyError::ProofTooLarge { .. })
+        ));
+    }
+
+    /// Dummy DSTW wire is not the real S-two prefix.
+    #[test]
+    fn test_dummy_and_stwo_not_same_wire() {
+        assert_ne!(&MAGIC[..], &STWO_MAGIC[..]);
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let dummy = DummyStwo::prove(a, b);
+        assert_eq!(&dummy[0..4], b"DSTW");
+        assert_ne!(&dummy[0..4], STWO_MAGIC);
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_stwo_prove_verify_ab_hash() {
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let proof = crate::prove_ab_hash(a, b).expect("prove");
+        assert_eq!(&proof[0..4], STWO_MAGIC);
+        crate::verify_ab_hash(&proof, a, b, c).expect("verify");
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_stwo_bitflip_rejects() {
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let mut proof = crate::prove_ab_hash(a, b).expect("prove");
+        let i = proof.len() / 2;
+        proof[i] ^= 1;
+        assert!(crate::verify_ab_hash(&proof, a, b, c).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_wrong_prover_id_rejects() {
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let mut proof = crate::prove_ab_hash(a, b).expect("prove");
+        proof[4] = 0;
+        let err = crate::verify_ab_hash(&proof, a, b, c).unwrap_err();
+        assert!(matches!(err, VerifyError::WrongProverId { got: 0 }));
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_not_dstw_magic() {
+        let a = M31::new(11).unwrap();
+        let b = M31::new(22).unwrap();
+        let c = dummy_m31_hash(a, b);
+        let real = crate::prove_ab_hash(a, b).expect("prove");
+        assert_ne!(&real[0..4], b"DSTW");
+        assert!(DummyStwo.verify_dummy(&real, a.0, b.0, c.0).is_err());
+        let dummy = DummyStwo::prove(a, b);
+        assert!(crate::verify_ab_hash(&dummy, a, b, c).is_err());
+    }
+}
