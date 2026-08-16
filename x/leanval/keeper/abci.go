@@ -76,27 +76,13 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 	set := k.BondedSet(period)
 	subs := make([]types.SubjectProof, 0, len(set))
 	for _, s := range set {
-		a, b := dummySeeds(s.Subject)
 		subs = append(subs, types.SubjectProof{
 			Subject: s.Subject,
 			Weight:  s.Weight,
-			Proof:   DummyStwoProve(a, b),
+			Proof:   DummyStwoProveBound(period, s.Subject, s.Weight),
 		})
 	}
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
-}
-
-func dummySeeds(subject []byte) (uint32, uint32) {
-	var a, b uint32
-	for i, x := range subject {
-		if i < 4 {
-			a |= uint32(x) << (8 * i)
-		} else if i < 8 {
-			b |= uint32(x) << (8 * (i - 4))
-		}
-	}
-	const p = uint32((1 << 31) - 1)
-	return a % p, b % p
 }
 
 // InjectLocalProofs is how a proposer attaches dummy proofs before Prepare.

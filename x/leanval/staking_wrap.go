@@ -13,15 +13,19 @@ type StakingEndBlocker interface {
 	EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error)
 }
 
-// WrapStakingEndBlock skips staking EndBlock when leanval_owns_valset.
+// WrapStakingEndBlock always runs staking EndBlock so unbonding queues mature.
+// When leanval_owns_valset, returned ValidatorUpdates are dropped (app.EndBlocker
+// overwrites with BondedSet). Not registered in app — staking.NewAppModule is used
+// as-is; this wrap exists for callers who still compose it.
 func WrapStakingEndBlock(staking StakingEndBlocker, lean *keeper.Keeper) func(context.Context) ([]abci.ValidatorUpdate, error) {
 	return func(ctx context.Context) ([]abci.ValidatorUpdate, error) {
-		if lean != nil && lean.OwnsValset() {
-			return nil, nil
-		}
 		if staking == nil {
 			return nil, nil
 		}
-		return staking.EndBlock(ctx)
+		u, err := staking.EndBlock(ctx)
+		if lean != nil && lean.OwnsValset() {
+			return nil, err
+		}
+		return u, err
 	}
 }

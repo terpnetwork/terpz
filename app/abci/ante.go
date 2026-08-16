@@ -18,6 +18,8 @@ import (
 	globalfeekeeper "github.com/terpnetwork/terp-core/v6/x/globalfee/keeper"
 	smartaccountkeeper "github.com/terpnetwork/terp-core/v6/x/smart-account/keeper"
 
+	leanvalante "github.com/terpnetwork/terp-core/v6/x/leanval/ante"
+
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
@@ -91,6 +93,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		wasmkeeper.NewCountTXDecorator(options.TXCounterStoreKey),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),
+		leanvalante.NewDecorator(),
 		ante.NewTxTimeoutHeightDecorator(),
 		ante.NewValidateMemoDecorator(options.AccountKeeper),
 		ante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),

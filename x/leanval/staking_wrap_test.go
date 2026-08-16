@@ -38,14 +38,14 @@ func TestFlagOnEmitsLeanUpdates(t *testing.T) {
 	}
 }
 
-func TestWrapSkipsStakingWhenOwns(t *testing.T) {
+func TestWrapRunsStakingButDropsUpdatesWhenOwns(t *testing.T) {
 	k := keeper.NewKeeper(nil, nil)
 	k.SetOwnsValset(true)
 	st := &fakeStake{}
 	fn := leanval.WrapStakingEndBlock(st, k)
 	u, err := fn(context.Background())
-	if err != nil || len(u) != 0 || st.n != 0 {
-		t.Fatalf("staking EndBlock must not run: u=%v n=%d err=%v", u, st.n, err)
+	if err != nil || len(u) != 0 || st.n != 1 {
+		t.Fatalf("staking EndBlock must run (unbonding) but drop val updates: u=%v n=%d err=%v", u, st.n, err)
 	}
 	if types.FlagOwnsValset != "leanval_owns_valset" {
 		t.Fatal(types.FlagOwnsValset)

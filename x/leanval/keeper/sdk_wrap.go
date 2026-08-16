@@ -8,6 +8,7 @@ import (
 // SDKWrapPrepare wraps hashmerchant Prepare (ctx, req) without replacing it.
 func (k *Keeper) SDKWrapPrepare(inner sdk.PrepareProposalHandler) sdk.PrepareProposalHandler {
 	return func(ctx sdk.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
+		k.BindContext(ctx)
 		var p PrepareHandler
 		if inner != nil {
 			p = func(r *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
@@ -18,9 +19,12 @@ func (k *Keeper) SDKWrapPrepare(inner sdk.PrepareProposalHandler) sdk.PreparePro
 	}
 }
 
-// SDKWrapProcess wraps hashmerchant Process.
+// SDKWrapProcess wraps hashmerchant Process. Bind KV + charge DummyStwo gas.
 func (k *Keeper) SDKWrapProcess(inner sdk.ProcessProposalHandler) sdk.ProcessProposalHandler {
 	return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
+		k.BindContext(ctx)
+		k.SetGasMeter(ctx.GasMeter())
+		defer k.SetGasMeter(nil)
 		var p ProcessHandler
 		if inner != nil {
 			p = func(r *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {

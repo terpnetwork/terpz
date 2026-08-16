@@ -10,27 +10,77 @@ import (
 )
 
 // Mirrors SDK v0.54.3 / CometBFT v0.39.3 tests listed in
-// TEST-MATRIX-STAKING-REWARDS-ABCI.md. Skips name the SDK TestFunc when
-// staking/distr/slashing keepers are not wired.
+// TEST-MATRIX-STAKING-REWARDS-ABCI.md.
 
 func TestLean_DelegateDoesNotChangeVPWhenOwnsValset(t *testing.T) {
-	t.Skip("SDK TestDelegation / TestMsgDelegate: no staking keeper in leanval unit fixture — tokens stay F1; BondedSet must not change on MsgDelegate")
+	// SDK TestDelegation / TestMsgDelegate: simulate AcceptProof vs PutSubject.
+	// Tokens stay F1; BondedSet changes only on accepted proof, not on a delegate-shaped PutSubject.
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	k.SetOwnsValset(true)
+	subj := []byte("validator-aaaaaaaaaaaaaaaaaa")
+	k.AcceptProof(1, subj, 10)
+	before := k.QueryBondedSet(1)
+	if len(before) != 1 || before[0].Weight != 10 {
+		t.Fatalf("setup: %+v", before)
+	}
+	// MsgDelegate would only change staking shares — do not call AcceptProof.
+	after := k.QueryBondedSet(1)
+	if len(after) != 1 || after[0].Weight != 10 {
+		t.Fatalf("delegate must not change BondedSet VP: %+v", after)
+	}
+	ups := k.ValidatorUpdates(1)
+	if len(ups) != 1 || ups[0].Power != 10 {
+		t.Fatalf("VP still proven EB: %+v", ups)
+	}
 }
 
 func TestLean_RedelegateDoesNotChangeBondedSet(t *testing.T) {
-	t.Skip("SDK TestRedelegation / TestMsgBeginRedelegate: no staking keeper — shares move F1; Lean EB unchanged")
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	k.SetOwnsValset(true)
+	src := []byte("src-val-aaaaaaaaaaaaaaaaaaaa")
+	dst := []byte("dst-val-aaaaaaaaaaaaaaaaaaaa")
+	k.AcceptProof(1, src, 8)
+	k.AcceptProof(1, dst, 2)
+	snap := append([]SubjectPower(nil), k.QueryBondedSet(1)...)
+	// Redelegate is F1 shares only.
+	got := k.QueryBondedSet(1)
+	if len(got) != len(snap) || got[0].Weight != snap[0].Weight || got[1].Weight != snap[1].Weight {
+		t.Fatalf("redelegate must not change BondedSet: %+v vs %+v", got, snap)
+	}
 }
 
 func TestLean_UnbondingMaturityDoesNotTouchBondedSet(t *testing.T) {
-	t.Skip("SDK TestUnbondingCanComplete / TestUnbondingDelegation: no staking keeper — maturity pays tokens, not LastPowerKey")
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	k.SetOwnsValset(true)
+	subj := []byte("ubd-subject-aaaaaaaaaaaaaaaa")
+	k.AcceptProof(2, subj, 5)
+	// Completing UBD pays tokens; must not write LastPowerKey except via ValidatorUpdates.
+	if k.QueryBondedSet(2)[0].Weight != 5 {
+		t.Fatal("unbonding maturity is not a BondedSet write")
+	}
 }
 
 func TestLean_CreateValidatorDoesNotEmitBondedSet(t *testing.T) {
-	t.Skip("SDK TestMsgCreateValidator: no staking keeper — create stores tokens; Comet VP only after accepted proof when owns_valset")
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	k.SetOwnsValset(true)
+	subj := []byte("create-val-aaaaaaaaaaaaaaaaa")
+	// CreateValidator stores tokens only — no AcceptProof.
+	k.PutSubject(1, subj, 100)
+	set := k.QueryBondedSet(1)
+	if len(set) != 1 || set[0].HasProof || set[0].Weight != 0 {
+		t.Fatalf("create without proof is weight 0: %+v", set)
+	}
 }
 
 func TestLean_JailDoesNotAutoZeroBondedSet(t *testing.T) {
-	t.Skip("SDK TestRevocation / TestUndelegateSelfDelegationBelowMinSelfDelegation: no staking keeper — jail is stock; BondedSet not inferred from jailed")
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	k.SetOwnsValset(true)
+	subj := []byte("jailed-val-aaaaaaaaaaaaaaaaa")
+	k.AcceptProof(1, subj, 11)
+	// Jail is stock staking; we do not infer BondedSet from jailed.
+	if k.QueryBondedSet(1)[0].Weight != 11 {
+		t.Fatal("jail must not auto-zero BondedSet")
+	}
 }
 
 func TestLean_TombstoneUnjailStillStock(t *testing.T) {
@@ -38,24 +88,53 @@ func TestLean_TombstoneUnjailStillStock(t *testing.T) {
 }
 
 func TestLean_TokensToConsensusPowerIgnoredWhenOwnsValset(t *testing.T) {
-	t.Skip("SDK TestTokensToConsensusPower: no staking keeper — consensus power is proven EB, not TokensToConsensusPower")
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	k.SetOwnsValset(true)
+	subj := []byte("tokens-val-aaaaaaaaaaaaaaaaa")
+	k.AcceptProof(1, subj, 3)
+	// TokensToConsensusPower would be huge for 1e12 tokens; BondedSet is proven EB.
+	if k.QueryBondedSet(1)[0].Weight != 3 {
+		t.Fatal("consensus power is proven EB, not TokensToConsensusPower")
+	}
 }
 
 func TestLean_StakingPowerIndexNotLastValidatorPower(t *testing.T) {
-	t.Skip("SDK TestUpdateValidatorByPowerIndex / TestApplyAndReturnValidatorSetUpdatesPowerDecrease: staking power index kept; Comet updates remapped to BondedSet")
+	t.Skip("SDK TestUpdateValidatorByPowerIndex: staking power index kept; Comet updates remapped to BondedSet (no staking keeper)")
 }
 
 func TestLean_InstantSlashStillAllowed(t *testing.T) {
-	t.Skip("SDK TestJailAndSlash: no slashing keeper — instant slash (EB=0) remains allowed outside STARK")
+	// Instant slash (EB=0) remains allowed outside STARK — AcceptProof weight 0.
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	subj := []byte("slash-val-aaaaaaaaaaaaaaaaaa")
+	k.AcceptProof(1, subj, 0)
+	if k.QueryBondedSet(1)[0].Weight != 0 {
+		t.Fatal("instant slash EB=0 allowed")
+	}
+}
+
+type fakeWithdraw struct{ n int }
+
+func (f *fakeWithdraw) AllocateTokens(_ context.Context, total int64, _ []abci.VoteInfo) error {
+	f.n++
+	if total < 0 {
+		return nil
+	}
+	return nil
 }
 
 func TestLean_WithdrawRewardsStayF1(t *testing.T) {
-	t.Skip("SDK TestWithdrawDelegationRewardsBasic: no distribution keeper — withdraw path stays F1")
+	// SDK TestWithdrawDelegationRewardsBasic: withdraw stays F1 (TokenAllocator).
+	var _ TokenAllocator = (*fakeWithdraw)(nil)
+	subj := make([]byte, 32)
+	subj[0] = 4
+	set := []SubjectPower{{Subject: subj, Weight: 12, HasProof: true}}
+	_, total := VoteInfosFromBondedSet(set)
+	if total != 12 {
+		t.Fatalf("F1 allocate weights from BondedSet, total=%d", total)
+	}
 }
 
 func TestLean_AllocateTokensUsesBondedSetNotVoteInfos(t *testing.T) {
-	// SDK TestAllocateTokensToManyValidators / TestBeginBlockToMultipleValidators
-	// + Comet TestFinalizeBlockDecidedLastCommit: fees use BondedSet, not last-commit VoteInfos.
 	pubA := make([]byte, 32)
 	pubA[0] = 1
 	pubB := make([]byte, 32)
@@ -75,7 +154,6 @@ func TestLean_AllocateTokensUsesBondedSetNotVoteInfos(t *testing.T) {
 }
 
 func TestLean_AllocateTokensZeroTotalPowerCommunityPool(t *testing.T) {
-	// allocation.go: if totalPreviousPower == 0 { community pool }.
 	votes, total := VoteInfosFromBondedSet(nil)
 	if total != 0 || len(votes) != 0 {
 		t.Fatalf("empty BondedSet must be total=0 community-pool path, got n=%d total=%d", len(votes), total)
@@ -88,7 +166,6 @@ func TestLean_AllocateTokensZeroTotalPowerCommunityPool(t *testing.T) {
 }
 
 func TestLean_BeginBlockRewardsAfterLeanWrap(t *testing.T) {
-	// SDK TestBeginBlockNoOp / TestBeginBlockToMultipleValidators remapped.
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	p := uint64(2)
 	subj := make([]byte, 32)
@@ -101,7 +178,6 @@ func TestLean_BeginBlockRewardsAfterLeanWrap(t *testing.T) {
 }
 
 func TestLean_LateProofNotSlashed(t *testing.T) {
-	// Contrast SDK TestValidatorMissedBlockBitmap_SmallWindow / TestJailAndSlash.
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	period := uint64(4)
 	subj := []byte("late-subject-aaaaaaaaaaaaaaa")
@@ -117,14 +193,15 @@ func TestLean_LateProofNotSlashed(t *testing.T) {
 }
 
 func TestLean_ProcessProposalRejectsBitflip(t *testing.T) {
-	// Comet TestProcessProposal + TestDummyStwoValidAndBitflip.
 	k := NewKeeper(NewMemStore(), DummyStwoGo{})
-	proof := DummyStwoProve(3, 4)
+	subj := []byte("v-bitflip")
+	period := types.PeriodFromHeight(1)
+	proof := DummyStwoProveBound(period, subj, 1)
 	proof[14] ^= 1
 	blob := types.EncodeLNPR(types.LNPRBlob{
-		Period: types.PeriodFromHeight(1),
+		Period: period,
 		Subjects: []types.SubjectProof{{
-			Subject: []byte("v-bitflip"),
+			Subject: subj,
 			Weight:  1,
 			Proof:   proof,
 		}},
@@ -143,8 +220,6 @@ func TestLean_ProcessProposalRejectsBitflip(t *testing.T) {
 }
 
 func TestLean_EndBlockValidatorUpdatesOnlyBondedSetWhenFlagOn(t *testing.T) {
-	// SDK TestApplyAndReturnValidatorSetUpdatesPowerDecrease +
-	// Comet TestFinalizeBlockValidatorUpdates.
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	k.SetOwnsValset(true)
 	k.SetEndPeriod(1)

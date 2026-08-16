@@ -11,7 +11,7 @@
 // Use keeper.WrapPrepareProposal / WrapProcessProposal around hashmerchant handlers.
 // Period = height / 600 (~1h at 6s).
 //
-// leanval_owns_valset (default off): when on, WrapStakingEndBlock skips staking
+// leanval_owns_valset (default off): when on, app.EndBlocker overwrites ValidatorUpdates; staking EndBlock still runs if wired
 // EndBlock; Keeper.EndBlock emits pending ValidatorUpdates.
 // MsgSudoContract to TestLeanVerifierAcc is rejected (code 2) via ante.RejectLeanSudo.
 package leanval

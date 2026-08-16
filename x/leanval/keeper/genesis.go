@@ -4,8 +4,26 @@ import "github.com/terpnetwork/terp-core/v6/x/leanval/types"
 
 func (k *Keeper) InitGenesis(gs types.GenesisState) {
 	k.SetOwnsValset(gs.OwnsValset)
+	// Seed period 0 BondedSet from genesis_subjects (pubkey + weight).
+	for _, s := range gs.GenesisSubjects {
+		if len(s.PubKey) == 0 {
+			continue
+		}
+		if s.Weight > 0 {
+			k.AcceptProof(0, s.PubKey, s.Weight)
+		} else {
+			k.PutSubject(0, s.PubKey, 0)
+		}
+	}
 }
 
 func (k *Keeper) ExportGenesis() types.GenesisState {
-	return types.GenesisState{OwnsValset: k.OwnsValset()}
+	gs := types.GenesisState{OwnsValset: k.OwnsValset()}
+	for _, s := range k.BondedSet(0) {
+		gs.GenesisSubjects = append(gs.GenesisSubjects, types.GenesisSubject{
+			PubKey: append([]byte(nil), s.Subject...),
+			Weight: s.Weight,
+		})
+	}
+	return gs
 }

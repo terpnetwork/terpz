@@ -115,10 +115,13 @@ func valUpdate(pub []byte, power int64) abci.ValidatorUpdate {
 // VerifyLNPR runs VerifyDummy on each subject. No store writes (ProcessProposal).
 func (k *Keeper) VerifyLNPR(blob types.LNPRBlob) error {
 	for _, s := range blob.Subjects {
+		if k.gas != nil {
+			k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
+		}
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
-		if err := k.Verifier.VerifyDummy(s.Proof, instancesFor(blob.Period, s.Subject)); err != nil {
+		if err := k.Verifier.VerifyDummy(s.Proof, instancesFor(blob.Period, s.Subject, s.Weight)); err != nil {
 			return err
 		}
 	}
@@ -134,11 +137,6 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 		k.AcceptProof(blob.Period, s.Subject, s.Weight)
 	}
 	return nil
-}
-
-func instancesFor(period uint64, subject []byte) []byte {
-	b := types.PutI64(int64(period))
-	return append(b, subject...)
 }
 
 func errProof(s string) error { return fmt.Errorf("leanval: %s", s) }

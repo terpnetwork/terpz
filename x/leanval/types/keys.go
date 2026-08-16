@@ -5,7 +5,7 @@ const (
 	ModuleName = "leanval"
 	StoreKey   = ModuleName
 
-	// FlagOwnsValset: default off. When true, staking EndBlock must not emit val updates.
+	// FlagOwnsValset: default off. When true, app EndBlocker overwrites ValidatorUpdates.
 	FlagOwnsValset = "leanval_owns_valset"
 
 	// BondedPrefix keys: BondedPrefix | period(8 BE) | subject
@@ -14,6 +14,8 @@ const (
 	SubjectIndexPrefix byte = 0x02
 	// LastUpdatesPrefix holds last emitted (subject → power) for diffs.
 	LastUpdatesPrefix byte = 0x03
+	// OwnsValsetPrefix persists leanval_owns_valset across restart (not RAM-only).
+	OwnsValsetPrefix byte = 0x00
 )
 
 // Inject prefixes (4-byte ASCII). Hashmerchant owns HMVE; we wrap, not replace.
@@ -30,6 +32,8 @@ const BlocksPerPeriod int64 = 600
 // PeriodFromHeight maps height → period P. Height 0..N-1 is period 0.
 // TestLeanVerifierAcc is 20 zero bytes (v1 hardcoded waist; consensus param later).
 func TestLeanVerifierAcc() []byte { return make([]byte, 20) }
+
+func OwnsValsetKey() []byte { return []byte{OwnsValsetPrefix} }
 
 func PeriodFromHeight(height int64) uint64 {
 	if height < 0 {
