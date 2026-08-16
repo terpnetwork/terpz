@@ -137,8 +137,35 @@ func valUpdate(pub []byte, power int64) abci.ValidatorUpdate {
 	}
 }
 
+// hasBondedOrPrior is read-only: true if this period or any earlier period has rows.
+func (k *Keeper) hasBondedOrPrior(period uint64) bool {
+	if len(k.BondedSet(period)) > 0 {
+		return true
+	}
+	for p := period; p > 0; p-- {
+		if len(k.BondedSet(p-1)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// rejectEmptyReplace is the Linus testnet gate: empty LNPR must not wipe a live set.
+func (k *Keeper) rejectEmptyReplace(blob types.LNPRBlob) error {
+	if len(blob.Subjects) > 0 {
+		return nil
+	}
+	if k.hasBondedOrPrior(blob.Period) {
+		return errProof("empty LNPR replace")
+	}
+	return nil
+}
+
 // VerifyLNPR runs VerifyDummy on each subject. No store writes (ProcessProposal).
 func (k *Keeper) VerifyLNPR(blob types.LNPRBlob) error {
+	if err := k.rejectEmptyReplace(blob); err != nil {
+		return err
+	}
 	for _, s := range blob.Subjects {
 		if k.gas != nil {
 			k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
