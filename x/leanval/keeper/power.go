@@ -173,7 +173,7 @@ func (k *Keeper) VerifyLNPR(blob types.LNPRBlob) error {
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
-		if err := k.Verifier.VerifyDummy(s.Proof, instancesFor(blob.Period, s.Subject, s.Weight)); err != nil {
+		if err := k.verifyProof(s.Proof, instancesFor(blob.Period, s.Subject, s.Weight)); err != nil {
 			return err
 		}
 	}

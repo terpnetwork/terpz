@@ -575,6 +575,7 @@ func NewAppKeepers(
 
 	lv := leanvalkeeper.NewKeeper(nil, nil)
 	lv.SetStoreKey(appKeepers.keys[leanvaltypes.StoreKey])
+	lv.SetWasmSudo(appKeepers.WasmKeeper)
 	appKeepers.LeanvalKeeper = lv
 
 	// Initialize cw-hooks keeper (requires wasm keeper + contract keeper)

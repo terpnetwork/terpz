@@ -3,6 +3,7 @@ package keeper
 import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
@@ -18,6 +19,11 @@ type Keeper struct {
 	endPeriod   uint64
 	sk          storetypes.StoreKey
 	gas         storetypes.GasMeter
+	wasmSudo    WasmSudoClient
+	verifierAcc []byte
+	leanZkID    uint64
+	sdkCtx      sdk.Context
+	hasCtx      bool
 }
 
 func NewKeeper(store Store, v Verifier) *Keeper {

@@ -7,6 +7,9 @@ func (k *Keeper) InitGenesis(gs types.GenesisState) {
 		panic(err)
 	}
 	k.SetOwnsValset(gs.OwnsValset)
+	if len(gs.VerifierAddr) > 0 {
+		k.SetModuleVerifier(gs.VerifierAddr, gs.LeanCodeID)
+	}
 	// Seed period 0 BondedSet from genesis_subjects (pubkey + weight).
 	for _, s := range gs.GenesisSubjects {
 		if len(s.PubKey) == 0 {
