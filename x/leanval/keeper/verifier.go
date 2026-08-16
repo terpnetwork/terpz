@@ -78,3 +78,15 @@ func (StwoBalanceAir) VerifyBalanceAir(proof []byte, pub BalanceAirPublic, priv 
 	}
 	return nil
 }
+
+
+// StwoValsetAir proves/verifies the Phase 1A 6-byte valset AIR via pinned Stwo.
+type StwoValsetAir struct{}
+
+func (StwoValsetAir) Prove(period, index uint64, eb uint8, subject []byte) ([]byte, error) {
+	return proveValsetStwo(period, index, eb, subject)
+}
+
+func (StwoValsetAir) Verify(proof []byte, period, index uint64, eb uint8, subject []byte) error {
+	return verifyValsetStwo(proof, period, index, eb, subject)
+}

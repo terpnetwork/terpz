@@ -53,7 +53,7 @@ func (UnimplementedValsetAirSpec) Verify(proof []byte, period, index uint64, eb 
 }
 
 func TestPhase1A_ValsetAIR_ValidStatementAccepted(t *testing.T) {
-	air := UnimplementedValsetAirSpec{}
+	air := StwoValsetAir{}
 	for _, row := range phase1AValsetSpecTable() {
 		proof, err := air.Prove(row.period, row.index, row.eb, row.subj)
 		if err != nil {
@@ -72,7 +72,7 @@ func TestPhase1A_ValsetAIR_ValidStatementAccepted(t *testing.T) {
 }
 
 func TestPhase1A_ValsetAIR_BitflipRejects(t *testing.T) {
-	air := UnimplementedValsetAirSpec{}
+	air := StwoValsetAir{}
 	row := phase1AValsetSpecTable()[0]
 	proof, err := air.Prove(row.period, row.index, row.eb, row.subj)
 	if err != nil {
