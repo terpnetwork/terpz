@@ -3,6 +3,7 @@ package leanval
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"cosmossdk.io/core/appmodule"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -41,21 +42,16 @@ func (AppModuleBasic) ValidateGenesis(_ codec.JSONCodec, _ client.TxEncodingConf
 		return nil
 	}
 	var gs types.GenesisState
-	return json.Unmarshal(bz, &gs)
+	if err := json.Unmarshal(bz, &gs); err != nil {
+		return fmt.Errorf("leanval genesis: %w", err)
+	}
+	return nil
 }
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(client.Context, *runtime.ServeMux) {}
 func (AppModuleBasic) GetTxCmd() *cobra.Command                                    { return nil }
 
-// GetQueryCmd: terpz query leanval bonded-set [period]
 func (AppModuleBasic) GetQueryCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:                        types.ModuleName,
-		Short:                      "Querying commands for the leanval module",
-		DisableFlagParsing:         true,
-		SuggestionsMinimumDistance: 2,
-	}
-	cmd.AddCommand(keeper.QueryBondedSetCLI(nil))
-	return cmd
+	return cliQueryCmd()
 }
 
 type AppModule struct {
@@ -68,26 +64,37 @@ func (am AppModule) IsOnePerModuleType()      {}
 func (am AppModule) IsAppModule()             {}
 func (AppModule) ConsensusVersion() uint64    { return 1 }
 
-func (am AppModule) RegisterServices(module.Configurator) {}
+func (am AppModule) RegisterServices(cfg module.Configurator) {
+	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(am.k))
+}
+
 func (am AppModule) InitGenesis(ctx sdk.Context, _ codec.JSONCodec, bz json.RawMessage) {
 	if am.k != nil {
 		am.k.BindContext(ctx)
 	}
 	var gs types.GenesisState
 	if len(bz) > 0 {
-		_ = json.Unmarshal(bz, &gs)
+		if err := json.Unmarshal(bz, &gs); err != nil {
+			panic(fmt.Errorf("leanval InitGenesis: %w", err))
+		}
 	}
 	if am.k != nil {
 		am.k.InitGenesis(gs)
 	}
 }
+
 func (am AppModule) ExportGenesis(ctx sdk.Context, _ codec.JSONCodec) json.RawMessage {
 	if am.k != nil {
 		am.k.BindContext(ctx)
 	}
+	if am.k == nil {
+		bz, _ := json.Marshal(types.DefaultGenesis())
+		return bz
+	}
 	bz, _ := json.Marshal(am.k.ExportGenesis())
 	return bz
 }
+
 func (am AppModule) EndBlock(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	if am.k != nil {
