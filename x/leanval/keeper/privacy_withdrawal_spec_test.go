@@ -37,7 +37,7 @@ func (UnimplementedWithdrawalAir) Open(commit [32]byte, addr, secret []byte) err
 }
 
 func TestPrivacy_WithdrawalCommitIsHashAddrSecret(t *testing.T) {
-	air := UnimplementedWithdrawalAir{}
+	air := HashAddrSecretWithdrawal{}
 	row := withdrawalSpecRow{
 		addr:   []byte("terp1hiddenwithdrawaddr00000000000"),
 		secret: []byte("withdrawal-secret-32-bytes-pad!!"),
@@ -53,7 +53,7 @@ func TestPrivacy_WithdrawalCommitIsHashAddrSecret(t *testing.T) {
 }
 
 func TestPrivacy_SameAddrDifferentSecretDiffers(t *testing.T) {
-	air := UnimplementedWithdrawalAir{}
+	air := HashAddrSecretWithdrawal{}
 	addr := []byte("terp1sameaddrxxxxxxxxxxxxxxxxxxxx")
 	a, err := air.Commit(addr, []byte("secret-A"))
 	if err != nil {
@@ -69,7 +69,7 @@ func TestPrivacy_SameAddrDifferentSecretDiffers(t *testing.T) {
 }
 
 func TestPrivacy_OpenRequiresMatchingSecret(t *testing.T) {
-	air := UnimplementedWithdrawalAir{}
+	air := HashAddrSecretWithdrawal{}
 	addr := []byte("terp1openaddr")
 	secret := []byte("s1")
 	want := withdrawalCommitment(addr, secret)
