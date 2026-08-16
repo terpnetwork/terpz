@@ -158,9 +158,12 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 	if err := k.VerifyLNPR(blob); err != nil {
 		return err
 	}
+	listed := make(map[string]struct{}, len(blob.Subjects))
 	for _, s := range blob.Subjects {
 		k.AcceptProof(blob.Period, s.Subject, s.Weight)
+		listed[string(s.Subject)] = struct{}{}
 	}
+	k.dropUnlisted(blob.Period, listed)
 	return nil
 }
 

@@ -74,14 +74,7 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 
 func (k *Keeper) buildLNPR(period uint64) []byte {
 	set := k.BondedSetOrCarry(period)
-	subs := make([]types.SubjectProof, 0, len(set))
-	for _, s := range set {
-		subs = append(subs, types.SubjectProof{
-			Subject: s.Subject,
-			Weight:  s.Weight,
-			Proof:   DummyStwoProveBound(period, s.Subject, s.Weight),
-		})
-	}
+	subs := k.mergePending(period, set)
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 }
 
