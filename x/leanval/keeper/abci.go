@@ -34,6 +34,9 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 			txs = append([][]byte(nil), req.Txs...)
 		}
 		period := types.PeriodFromHeight(req.Height)
+		for _, tx := range req.Txs {
+			k.NoteMembershipTx(tx)
+		}
 		lnpr := k.buildLNPR(period)
 		txs = injectLNPR(txs, lnpr)
 		// App mempool ignores Comet req.Txs (ADR-060). Re-include CheckTx-ok JOIN/LEAV.

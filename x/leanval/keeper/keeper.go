@@ -35,7 +35,11 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 	if store == nil {
 		store = NewMemStore()
 	}
-	return &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
+	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
+	if leanValsetAirBin() != "" {
+		k.AllowDummy = false
+	}
+	return k
 }
 
 func (k *Keeper) SetOwnsValset(v bool) {
