@@ -292,10 +292,16 @@ mod real;
 mod balance;
 
 #[cfg(feature = "real-stwo")]
+mod valset;
+
+#[cfg(feature = "real-stwo")]
 pub use real::{prove_ab_hash, verify_ab_hash, RealStwo};
 
 #[cfg(feature = "real-stwo")]
 pub use balance::{prove_balance, verify_balance};
+
+#[cfg(feature = "real-stwo")]
+pub use valset::{prove_valset, valset_instance_bytes, verify_valset, VALSET_STATE_LEN};
 
 #[cfg(test)]
 mod tests {
@@ -457,5 +463,50 @@ mod tests {
         let period = 7u64;
         let subject = b"lean-subject-ed25519-pk-32bytes!";
         assert!(crate::prove_balance(period, subject, 21, 20).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_valset_air_prove_verify() {
+        let period = 3u64;
+        let idx = [0u8, 0, 0, 0, 42];
+        let eb = 32u8;
+        let inst = crate::valset_instance_bytes(period, idx, eb);
+        assert_eq!(inst.len(), 8 + crate::VALSET_STATE_LEN);
+        let proof = crate::prove_valset(period, idx, eb).expect("prove");
+        assert_eq!(&proof[0..4], STWO_MAGIC);
+        assert_ne!(&proof[0..4], b"DSTW");
+        crate::verify_valset(&proof, period, idx, eb).expect("verify");
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_valset_air_wrong_index_rejects() {
+        let period = 3u64;
+        let idx = [0u8, 0, 0, 0, 42];
+        let eb = 32u8;
+        let proof = crate::prove_valset(period, idx, eb).expect("prove");
+        let other = [0u8, 0, 0, 0, 43];
+        assert!(crate::verify_valset(&proof, period, other, eb).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_valset_air_wrong_eb_rejects() {
+        let period = 3u64;
+        let idx = [0u8, 0, 0, 0, 7];
+        let proof = crate::prove_valset(period, idx, 32).expect("prove");
+        assert!(crate::verify_valset(&proof, period, idx, 31).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_valset_air_bitflip_rejects() {
+        let period = 3u64;
+        let idx = [0u8, 0, 0, 0, 42];
+        let mut proof = crate::prove_valset(period, idx, 32).expect("prove");
+        let i = proof.len() / 2;
+        proof[i] ^= 1;
+        assert!(crate::verify_valset(&proof, period, idx, 32).is_err());
     }
 }
