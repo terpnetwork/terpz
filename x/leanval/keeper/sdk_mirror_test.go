@@ -226,10 +226,7 @@ func TestLean_EndBlockValidatorUpdatesOnlyBondedSetWhenFlagOn(t *testing.T) {
 	subj := make([]byte, 32)
 	subj[1] = 7
 	k.AcceptProof(1, subj, 21)
-	ups, err := k.EndBlock(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	ups := k.ValidatorUpdates(1)
 	if len(ups) != 1 || ups[0].Power != 21 {
 		t.Fatalf("flag on: updates from BondedSet only: %+v", ups)
 	}

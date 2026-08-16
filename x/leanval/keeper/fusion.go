@@ -58,6 +58,6 @@ func (k *Keeper) AllocateDelegatorFees(ctx sdk.Context, alloc TokenAllocator) er
 		h--
 	}
 	p := types.PeriodFromHeight(h)
-	votes, total := VoteInfosFromBondedSet(k.BondedSet(p))
+	votes, total := VoteInfosFromBondedSet(k.BondedSetOrCarry(p))
 	return alloc.AllocateTokens(ctx, total, votes)
 }

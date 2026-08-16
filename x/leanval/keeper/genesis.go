@@ -3,6 +3,9 @@ package keeper
 import "github.com/terpnetwork/terp-core/v6/x/leanval/types"
 
 func (k *Keeper) InitGenesis(gs types.GenesisState) {
+	if err := gs.Validate(); err != nil {
+		panic(err)
+	}
 	k.SetOwnsValset(gs.OwnsValset)
 	// Seed period 0 BondedSet from genesis_subjects (pubkey + weight).
 	for _, s := range gs.GenesisSubjects {

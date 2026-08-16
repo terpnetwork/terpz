@@ -45,6 +45,9 @@ func (AppModuleBasic) ValidateGenesis(_ codec.JSONCodec, _ client.TxEncodingConf
 	if err := json.Unmarshal(bz, &gs); err != nil {
 		return fmt.Errorf("leanval genesis: %w", err)
 	}
+	if err := gs.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(client.Context, *runtime.ServeMux) {}
@@ -75,6 +78,9 @@ func (am AppModule) InitGenesis(ctx sdk.Context, _ codec.JSONCodec, bz json.RawM
 		if err := json.Unmarshal(bz, &gs); err != nil {
 			panic(fmt.Errorf("leanval InitGenesis: %w", err))
 		}
+	}
+	if err := gs.Validate(); err != nil {
+		panic(err)
 	}
 	if am.k != nil {
 		am.k.InitGenesis(gs)

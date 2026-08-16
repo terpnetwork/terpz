@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -39,11 +38,11 @@ func TestP0_InitGenesisJSONTable(t *testing.T) {
 		wantW     int64
 		wantProof bool
 	}{
-		{"G-ON", `{"leanval_owns_valset":true}`, true, false, 0, 0, false},
+		{"G-ON", `{"leanval_owns_valset":true}`, true, true, 0, 0, false},
 		{"G-OFF", `{"leanval_owns_valset":false}`, false, false, 0, 0, false},
-		{"G-EMPTY-SUB", `{"leanval_owns_valset":true,"genesis_subjects":[]}`, true, false, 0, 0, false},
+		{"G-EMPTY-SUB", `{"leanval_owns_valset":true,"genesis_subjects":[]}`, true, true, 0, 0, false},
 		{"G-SEED", string(seed), true, false, 1, 7, true},
-		{"G-NEST", `{"params":{"leanval_owns_valset":true}}`, true, false, 0, 0, false},
+		{"G-NEST", `{"params":{"leanval_owns_valset":true}}`, true, true, 0, 0, false},
 		{"G-BAD", `{not-json`, false, true, 0, 0, false},
 		{"G-BAD-TYPE", `{"leanval_owns_valset":"yes"}`, false, true, 0, 0, false},
 	}
@@ -51,9 +50,12 @@ func TestP0_InitGenesisJSONTable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var gs types.GenesisState
 			err := json.Unmarshal([]byte(tc.raw), &gs)
+			if err == nil {
+				err = gs.Validate()
+			}
 			if tc.wantFail {
 				if err == nil {
-					t.Fatal("want fail-closed unmarshal")
+					t.Fatal("want fail-closed unmarshal/validate")
 				}
 				return
 			}
@@ -79,7 +81,12 @@ func TestP0_InitGenesisJSONTable(t *testing.T) {
 }
 
 func TestP0_InitGenesisAppModuleStillSwallowsJSON(t *testing.T) {
-	t.Skip("AppModule.InitGenesis still `_ = json.Unmarshal` — ValidateGenesis fail-closes but InitGenesis does not abort on G-BAD")
+	defer func() {
+		if recover() == nil {
+			t.Fatal("InitGenesis must panic on owns without subjects")
+		}
+	}()
+	NewKeeper(NewMemStore(), ClosedVerifier{}).InitGenesis(types.GenesisState{OwnsValset: true})
 }
 
 func TestP0_StakingEndBlockSplit_UpdatesOnlyLean(t *testing.T) {
@@ -89,10 +96,7 @@ func TestP0_StakingEndBlockSplit_UpdatesOnlyLean(t *testing.T) {
 	subj := make([]byte, 32)
 	subj[1] = 7
 	k.AcceptProof(1, subj, 21)
-	ups, err := k.EndBlock(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	ups := k.ValidatorUpdates(1)
 	if len(ups) != 1 || ups[0].Power != 21 {
 		t.Fatalf("flag on: Lean BondedSet updates only: %+v", ups)
 	}

@@ -1,6 +1,9 @@
 package types
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // GenesisSubject seeds BondedSet when staking keeper is not available at InitGenesis.
 type GenesisSubject struct {
@@ -20,6 +23,14 @@ type GenesisState struct {
 
 func DefaultGenesis() GenesisState {
 	return GenesisState{OwnsValset: false}
+}
+
+// Validate is fail-closed: owns_valset with no genesis subjects cannot seed Comet VP.
+func (g GenesisState) Validate() error {
+	if g.OwnsValset && len(g.GenesisSubjects) == 0 {
+		return fmt.Errorf("leanval: leanval_owns_valset requires genesis_subjects")
+	}
+	return nil
 }
 
 func (g *GenesisState) UnmarshalJSON(b []byte) error {

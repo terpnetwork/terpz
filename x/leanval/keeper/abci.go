@@ -73,7 +73,7 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 }
 
 func (k *Keeper) buildLNPR(period uint64) []byte {
-	set := k.BondedSet(period)
+	set := k.BondedSetOrCarry(period)
 	subs := make([]types.SubjectProof, 0, len(set))
 	for _, s := range set {
 		subs = append(subs, types.SubjectProof{

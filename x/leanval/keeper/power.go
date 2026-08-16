@@ -40,6 +40,31 @@ func (k *Keeper) BondedSet(period uint64) []SubjectPower {
 	return out
 }
 
+// BondedSetOrCarry returns BondedSet(period). If the current period prefix is
+// empty and period > 0, clone the last non-empty accepted rows into this period
+// so height/600 does not wipe Comet VP.
+func (k *Keeper) BondedSetOrCarry(period uint64) []SubjectPower {
+	set := k.BondedSet(period)
+	if len(set) > 0 || period == 0 {
+		return set
+	}
+	for p := period; p > 0; p-- {
+		prev := k.BondedSet(p - 1)
+		if len(prev) == 0 {
+			continue
+		}
+		for _, s := range prev {
+			if s.HasProof {
+				k.AcceptProof(period, s.Subject, s.Weight)
+			} else {
+				k.PutSubject(period, s.Subject, 0)
+			}
+		}
+		return k.BondedSet(period)
+	}
+	return set
+}
+
 type rec struct {
 	accepted bool
 	weight   int64
@@ -76,7 +101,7 @@ func (k *Keeper) AcceptProof(period uint64, subject []byte, weight int64) {
 
 // ValidatorUpdates emits Comet updates from BondedSet only (no staking path).
 func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
-	set := k.BondedSet(period)
+	set := k.BondedSetOrCarry(period)
 	seen := map[string]struct{}{}
 	var ups []abci.ValidatorUpdate
 	for _, s := range set {
