@@ -36,6 +36,8 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 		period := types.PeriodFromHeight(req.Height)
 		lnpr := k.buildLNPR(period)
 		txs = injectLNPR(txs, lnpr)
+		// App mempool ignores Comet req.Txs (ADR-060). Re-include CheckTx-ok JOIN/LEAV.
+		txs = appendMembershipFromComet(txs, req.Txs)
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
 	}
 }
@@ -138,4 +140,22 @@ func (k *Keeper) ProcessInjectedLNPR(txs [][]byte) error {
 		return nil
 	}
 	return k.ApplyLNPR(blob)
+}
+
+func appendMembershipFromComet(txs, comet [][]byte) [][]byte {
+	seen := map[string]struct{}{}
+	for _, tx := range txs {
+		seen[string(tx)] = struct{}{}
+	}
+	for _, tx := range comet {
+		if !types.IsMembershipTx(tx) {
+			continue
+		}
+		if _, ok := seen[string(tx)]; ok {
+			continue
+		}
+		txs = append(txs, tx)
+		seen[string(tx)] = struct{}{}
+	}
+	return txs
 }

@@ -100,3 +100,24 @@ func TestPrepareInjectsLNPRAfterHMVE(t *testing.T) {
 		t.Fatalf("txs[1] must be LNPR, got %x", resp.Txs[1][:4])
 	}
 }
+
+func TestPrepareIncludesCometMembershipTxs(t *testing.T) {
+	k := NewKeeper(NewMemStore(), ClosedVerifier{})
+	join := types.EncodeJoin(types.JoinBlob{Period: 0, Subject: []byte("new-ed25519"), Weight: 10})
+	h := k.WrapPrepareProposal(func(req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
+		return &abci.ResponsePrepareProposal{Txs: req.Txs}, nil
+	})
+	resp, err := h(&abci.RequestPrepareProposal{Height: 3, Txs: [][]byte{join}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tx := range resp.Txs {
+		if types.IsMembershipTx(tx) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("JOIN from Comet req.Txs must be in proposal: %d txs", len(resp.Txs))
+	}
+}
