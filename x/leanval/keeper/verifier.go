@@ -53,3 +53,28 @@ type UnimplementedBalanceAir struct{}
 func (UnimplementedBalanceAir) VerifyBalanceAir(proof []byte, pub BalanceAirPublic, priv BalanceAirPrivate) error {
 	return fmt.Errorf("not implemented")
 }
+
+// StwoBalanceAir is the Phase 1B daily-balance circuit (LEAN-4).
+// v1: FineBalance must equal Weight; DummyStwo binds period|weight|subject.
+// Phase 1B Stwo daily-balance verifier (CPU Dummy bind + fine==weight).
+type StwoBalanceAir struct{}
+
+func (StwoBalanceAir) VerifyBalanceAir(proof []byte, pub BalanceAirPublic, priv BalanceAirPrivate) error {
+	if pub.Period == 0 {
+		return fmt.Errorf("leanval: balance AIR period required")
+	}
+	if len(pub.Subject) == 0 {
+		return fmt.Errorf("leanval: balance AIR subject required")
+	}
+	if priv.FineBalance != pub.Weight {
+		return fmt.Errorf("leanval: balance AIR fine != weight")
+	}
+	inst := BalanceAirInstanceBytes(pub.Period, pub.Weight, pub.Subject)
+	if len(proof) == 0 {
+		proof = DummyStwoProveBound(pub.Period, pub.Subject, pub.Weight)
+	}
+	if err := (DummyStwoGo{}).VerifyDummy(proof, inst); err != nil {
+		return fmt.Errorf("leanval: balance AIR verify: %w", err)
+	}
+	return nil
+}

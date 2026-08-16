@@ -45,7 +45,7 @@ func phase1BSpecTable() []balanceAirSpecRow {
 // TestPhase1B_BalanceAIR_ValidStatementAccepted is red until VerifyBalanceAir
 // accepts a well-formed instance (period, prev, weight, roots, witness).
 func TestPhase1B_BalanceAIR_ValidStatementAccepted(t *testing.T) {
-	air := UnimplementedBalanceAir{}
+	air := StwoBalanceAir{}
 	for _, row := range phase1BSpecTable() {
 		t.Run(row.name, func(t *testing.T) {
 			pub := BalanceAirPublic{

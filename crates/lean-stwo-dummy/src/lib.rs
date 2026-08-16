@@ -289,7 +289,13 @@ impl Verifier for DummyStwo {
 mod real;
 
 #[cfg(feature = "real-stwo")]
+mod balance;
+
+#[cfg(feature = "real-stwo")]
 pub use real::{prove_ab_hash, verify_ab_hash, RealStwo};
+
+#[cfg(feature = "real-stwo")]
+pub use balance::{prove_balance, verify_balance};
 
 #[cfg(test)]
 mod tests {
@@ -432,5 +438,24 @@ mod tests {
         assert!(DummyStwo.verify_dummy(&real, a.0, b.0, c.0).is_err());
         let dummy = DummyStwo::prove(a, b);
         assert!(crate::verify_ab_hash(&dummy, a, b, c).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_balance_air_prove_verify() {
+        let period = 7u64;
+        let subject = b"lean-subject-ed25519-pk-32bytes!";
+        let weight = 21i64;
+        let proof = crate::prove_balance(period, subject, weight, weight).expect("prove");
+        assert_eq!(&proof[0..4], STWO_MAGIC);
+        crate::verify_balance(&proof, period, subject, weight, weight).expect("verify");
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_balance_air_fine_mismatch_rejects() {
+        let period = 7u64;
+        let subject = b"lean-subject-ed25519-pk-32bytes!";
+        assert!(crate::prove_balance(period, subject, 21, 20).is_err());
     }
 }
