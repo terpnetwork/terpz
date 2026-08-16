@@ -29,8 +29,16 @@ func pendingPath() string {
 	if p := os.Getenv("LEANVAL_PENDING"); p != "" {
 		return p
 	}
-	if _, err := os.Stat(DefaultPendingPath); err == nil {
-		return DefaultPendingPath
+	cands := []string{DefaultPendingPath}
+	if ents, err := os.ReadDir("/var/cosmos-chain"); err == nil {
+		for _, e := range ents {
+			cands = append(cands, "/var/cosmos-chain/"+e.Name()+"/config/lean-pending.json")
+		}
+	}
+	for _, c := range cands {
+		if st, err := os.Stat(c); err == nil && st.Size() > 0 {
+			return c
+		}
 	}
 	return ""
 }
