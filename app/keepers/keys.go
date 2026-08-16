@@ -31,6 +31,7 @@ import (
 	hashmerchanttypes "github.com/terpnetwork/terp-core/v6/x/hashmerchant/types"
 	smartaccounttypes "github.com/terpnetwork/terp-core/v6/x/smart-account/types"
 	tokenfactorytypes "github.com/terpnetwork/terp-core/v6/x/tokenfactory/types"
+	leanvaltypes "github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
 func (appKeepers *AppKeepers) GenerateKeys() {
@@ -65,6 +66,7 @@ func (appKeepers *AppKeepers) GenerateKeys() {
 		tokenfactorytypes.StoreKey,
 		hashmerchanttypes.StoreKey,
 		cwhookstypes.StoreKey,
+		leanvaltypes.StoreKey,
 	)
 
 	appKeepers.tkeys = storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)

@@ -61,6 +61,9 @@ import (
 	"github.com/terpnetwork/terp-core/v6/x/hashmerchant"
 	hashmerchanttypes "github.com/terpnetwork/terp-core/v6/x/hashmerchant/types"
 
+	leanval "github.com/terpnetwork/terp-core/v6/x/leanval"
+	leanvaltypes "github.com/terpnetwork/terp-core/v6/x/leanval/types"
+
 	cwhooksmodule "github.com/terpnetwork/terp-core/v6/x/cw-hooks/module"
 	cwhookstypes "github.com/terpnetwork/terp-core/v6/x/cw-hooks/types"
 
@@ -118,6 +121,7 @@ var ModuleBasics = module.NewBasicManager(
 	tokenfactory.AppModuleBasic{},
 	smartaccount.AppModuleBasic{},
 	hashmerchant.AppModuleBasic{},
+		leanval.AppModuleBasic{},
 	cwhooksmodule.AppModuleBasic{},
 )
 
@@ -183,6 +187,9 @@ func orderBeginBlockers() []string {
 		tokenfactorytypes.ModuleName,
 		cwhookstypes.ModuleName,
 		hashmerchanttypes.ModuleName,
+		leanvaltypes.ModuleName,
+		leanvaltypes.ModuleName,
+		leanvaltypes.ModuleName,
 		wasmtypes.ModuleName,
 		wasmlctypes.ModuleName,
 	}

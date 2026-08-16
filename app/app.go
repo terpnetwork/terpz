@@ -99,6 +99,8 @@ import (
 	feesharetypes "github.com/terpnetwork/terp-core/v6/x/feeshare/types"
 	"github.com/terpnetwork/terp-core/v6/x/globalfee"
 	"github.com/terpnetwork/terp-core/v6/x/hashmerchant"
+	leanval "github.com/terpnetwork/terp-core/v6/x/leanval"
+	leanvaltypes "github.com/terpnetwork/terp-core/v6/x/leanval/types"
 	"github.com/terpnetwork/terp-core/v6/x/tokenfactory"
 	tokenfactorytypes "github.com/terpnetwork/terp-core/v6/x/tokenfactory/types"
 
@@ -426,6 +428,7 @@ func NewTerpApp(
 		ibchooks.NewAppModule(*app.AccountKeeper),
 		smartaccount.NewAppModule(appCodec, *app.SmartAccountKeeper),
 		hashmerchant.NewAppModule(app.HashMerchantKeeper),
+		leanval.NewAppModule(app.LeanvalKeeper),
 		cwhooksmodule.NewAppModule(appCodec, *app.CwHooksKeeper),
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
 	)
@@ -502,8 +505,8 @@ func NewTerpApp(
 	// ABCI++ vote extension handlers (hashmerchant)
 	app.SetExtendVoteHandler(app.HashMerchantKeeper.ExtendVoteHandler())
 	app.SetVerifyVoteExtensionHandler(app.HashMerchantKeeper.VerifyVoteExtensionHandler())
-	app.SetPrepareProposal(app.HashMerchantKeeper.PrepareProposalHandler())
-	app.SetProcessProposal(app.HashMerchantKeeper.ProcessProposalHandler())
+	app.SetPrepareProposal(app.LeanvalKeeper.SDKWrapPrepare(app.HashMerchantKeeper.PrepareProposalHandler()))
+	app.SetProcessProposal(app.LeanvalKeeper.SDKWrapProcess(app.HashMerchantKeeper.ProcessProposalHandler()))
 
 	// must be before Loading version
 	// requires the snapshot store to be created and registered as a BaseAppOption
@@ -575,7 +578,17 @@ func (app *TerpApp) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 
 // EndBlocker application updates every end block
 func (app *TerpApp) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
-	return app.mm.EndBlock(ctx)
+	eb, err := app.mm.EndBlock(ctx)
+	if err != nil {
+		return eb, err
+	}
+	if app.LeanvalKeeper != nil && app.LeanvalKeeper.OwnsValset() {
+		app.LeanvalKeeper.BindContext(ctx)
+		p := leanvaltypes.PeriodFromHeight(ctx.BlockHeight())
+		app.LeanvalKeeper.SetEndPeriod(p)
+		eb.ValidatorUpdates = app.LeanvalKeeper.ValidatorUpdates(p)
+	}
+	return eb, nil
 }
 
 // Precommitter application updates before the commital of a block after all transactions have been delivered.
@@ -606,6 +619,12 @@ func (app *TerpApp) PreBlocker(ctx sdk.Context, req *abci.RequestFinalizeBlock) 
 	// Extract and process hashmerchant vote extensions injected by
 	// PrepareProposal before any module PreBlockers run.
 	app.HashMerchantKeeper.ProcessInjectedVoteExtension(ctx, req.Txs)
+	if app.LeanvalKeeper != nil {
+		app.LeanvalKeeper.BindContext(ctx)
+		if err := app.LeanvalKeeper.ProcessInjectedLNPR(req.Txs); err != nil {
+			return nil, err
+		}
+	}
 
 	mm := app.ModuleManager()
 	return mm.PreBlock(ctx)

@@ -102,6 +102,8 @@ import (
 	cwhookstypes "github.com/terpnetwork/terp-core/v6/x/cw-hooks/types"
 
 	hashmerchantkeeper "github.com/terpnetwork/terp-core/v6/x/hashmerchant/keeper"
+	leanvalkeeper "github.com/terpnetwork/terp-core/v6/x/leanval/keeper"
+	leanvaltypes "github.com/terpnetwork/terp-core/v6/x/leanval/types"
 	hashmerchanttypes "github.com/terpnetwork/terp-core/v6/x/hashmerchant/types"
 	tokenfactorykeeper "github.com/terpnetwork/terp-core/v6/x/tokenfactory/keeper"
 	tokenfactorytypes "github.com/terpnetwork/terp-core/v6/x/tokenfactory/types"
@@ -169,6 +171,7 @@ type AppKeepers struct {
 
 	DripKeeper         dripkeeper.Keeper
 	HashMerchantKeeper *hashmerchantkeeper.Keeper
+	LeanvalKeeper      *leanvalkeeper.Keeper
 	CwHooksKeeper      *cwhookskeeper.Keeper
 
 	// Middleware wrapper
@@ -569,6 +572,10 @@ func NewAppKeepers(
 		hmConfig,
 	)
 	appKeepers.HashMerchantKeeper = &hmKeeper
+
+	lv := leanvalkeeper.NewKeeper(nil, nil)
+	lv.SetStoreKey(appKeepers.keys[leanvaltypes.StoreKey])
+	appKeepers.LeanvalKeeper = lv
 
 	// Initialize cw-hooks keeper (requires wasm keeper + contract keeper)
 	cwHooksKeeper := cwhookskeeper.NewKeeper(

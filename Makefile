@@ -146,6 +146,13 @@ build: build-check-version go.sum
 		rm -f go.mod.bak; \
 		go mod tidy; \
 	fi
+
+# Lean worktree node only. Never install as terpd — keeps images/concerns separate.
+.PHONY: terpz
+terpz: build-check-version go.sum
+	mkdir -p $(BUILDDIR)/
+	GOWORK=off go build -mod=readonly $(BUILD_FLAGS) -ldflags '$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz' -o $(BUILDDIR)/terpz $(GO_MODULE)/cmd/terpd
+
 ########################################
 ### Tools & dependencies (go-mod-cache, go.sum, draw-deps: scripts/makefiles/deps.mk)
 
