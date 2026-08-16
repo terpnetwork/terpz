@@ -112,18 +112,18 @@ func TestPhase1B_WrongPeriodDummyMustNotAcceptProof(t *testing.T) {
 }
 
 // TestPhase1B_InstanceLayoutPeriodWeightSubjectBE documents the public instance
-// bytes DummyStwo (and a future Stwo path) must consume.
+// bytes: period(8)|weight(8)|subject|object_roots(96). Roots are store-sourced (zeros default).
 func TestPhase1B_InstanceLayoutPeriodWeightSubjectBE(t *testing.T) {
 	period := uint64(0x0102030405060708)
 	weight := int64(0x1112131415161718)
 	subj := []byte{0xaa, 0xbb, 0xcc}
 	got := BalanceAirInstanceBytes(period, weight, subj)
-	want := make([]byte, 16+len(subj))
+	want := make([]byte, 16+len(subj)+types.ObjectRootsSize)
 	binary.BigEndian.PutUint64(want[0:8], period)
 	binary.BigEndian.PutUint64(want[8:16], uint64(weight))
 	copy(want[16:], subj)
 	if !bytes.Equal(got, want) {
-		t.Fatalf("layout period(8 BE)|weight(8 BE)|subject\n got %x\nwant %x", got, want)
+		t.Fatalf("layout period(8 BE)|weight(8 BE)|subject|roots(96)\n got %x\nwant %x", got, want)
 	}
 	proof := DummyStwoProveBound(period, subj, weight)
 	if err := (DummyStwoGo{}).VerifyDummy(proof, got); err != nil {

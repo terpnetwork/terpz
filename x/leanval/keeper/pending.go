@@ -72,6 +72,7 @@ func decodeSubject(s string) []byte {
 }
 
 func (k *Keeper) mergePending(period uint64, set []SubjectPower) []types.SubjectProof {
+	roots := k.LastObjectRoots()
 	pend := loadPending()
 	leave := map[string]struct{}{}
 	for _, s := range pend.Leave {
@@ -88,7 +89,7 @@ func (k *Keeper) mergePending(period uint64, set []SubjectPower) []types.Subject
 		out = append(out, types.SubjectProof{
 			Subject: s.Subject,
 			Weight:  s.Weight,
-			Proof:   DummyStwoProveBound(period, s.Subject, s.Weight),
+			Proof:   DummyStwoProveBoundRoots(period, s.Subject, s.Weight, roots),
 		})
 		seen[string(s.Subject)] = struct{}{}
 	}
@@ -110,7 +111,7 @@ func (k *Keeper) mergePending(period uint64, set []SubjectPower) []types.Subject
 		out = append(out, types.SubjectProof{
 			Subject: subj,
 			Weight:  w,
-			Proof:   DummyStwoProveBound(period, subj, w),
+			Proof:   DummyStwoProveBoundRoots(period, subj, w, roots),
 		})
 		seen[string(subj)] = struct{}{}
 	}

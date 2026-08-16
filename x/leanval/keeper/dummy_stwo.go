@@ -38,11 +38,17 @@ func DummyStwoProve(a, b uint32) []byte {
 }
 
 func DummyStwoProveBound(period uint64, subject []byte, weight int64) []byte {
-	a, b := dummySeedsBound(period, subject, weight)
+	return DummyStwoProveBoundRoots(period, subject, weight, nil)
+}
+
+// DummyStwoProveBoundRoots mixes last object roots into Dummy seeds.
+// roots may be nil (treated as 96 zero bytes) — still Dummy, not Stwo.
+func DummyStwoProveBoundRoots(period uint64, subject []byte, weight int64, roots []byte) []byte {
+	a, b := dummySeedsBound(period, subject, weight, roots)
 	return DummyStwoProve(a, b)
 }
 
-func dummySeedsBound(period uint64, subject []byte, weight int64) (uint32, uint32) {
+func dummySeedsBound(period uint64, subject []byte, weight int64, roots []byte) (uint32, uint32) {
 	a := uint32(period % uint64(m31P))
 	var mix uint32
 	wb := types.PutI64(weight)
@@ -52,12 +58,27 @@ func dummySeedsBound(period uint64, subject []byte, weight int64) (uint32, uint3
 	for i, x := range subject {
 		mix ^= uint32(x) << (8 * (i % 4))
 	}
+	for i, x := range padRoots(roots) {
+		mix ^= uint32(x) << (8 * (i % 4))
+	}
 	return a, mix % m31P
 }
 
+func padRoots(roots []byte) []byte {
+	out := make([]byte, types.ObjectRootsSize)
+	copy(out, roots)
+	return out
+}
+
 func instancesFor(period uint64, subject []byte, weight int64) []byte {
+	return instancesForRoots(period, subject, weight, nil)
+}
+
+// instancesForRoots is period(8)|weight(8)|subject|roots(96). Store-sourced roots only.
+func instancesForRoots(period uint64, subject []byte, weight int64, roots []byte) []byte {
 	b := append(types.PutI64(int64(period)), types.PutI64(weight)...)
-	return append(b, subject...)
+	b = append(b, subject...)
+	return append(b, padRoots(roots)...)
 }
 
 func (DummyStwoGo) VerifyDummy(proof, instances []byte) error {
@@ -88,10 +109,16 @@ func (DummyStwoGo) VerifyDummy(proof, instances []byte) error {
 	if len(instances) >= 16 {
 		period := types.GetU64(instances[:8])
 		weight := types.GetI64(instances[8:16])
-		subj := instances[16:]
-		ea, eb := dummySeedsBound(period, subj, weight)
+		rest := instances[16:]
+		var roots []byte
+		subj := rest
+		if len(rest) >= types.ObjectRootsSize {
+			subj = rest[:len(rest)-types.ObjectRootsSize]
+			roots = rest[len(rest)-types.ObjectRootsSize:]
+		}
+		ea, eb := dummySeedsBound(period, subj, weight, roots)
 		if a != ea || b != eb {
-			return fmt.Errorf("leanval: DummyStwo instance bind failed (forged weight or period)")
+			return fmt.Errorf("leanval: DummyStwo instance bind failed (forged weight, period, or roots)")
 		}
 	}
 	return nil

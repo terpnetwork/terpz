@@ -16,7 +16,13 @@ const (
 	LastUpdatesPrefix byte = 0x03
 	// OwnsValsetPrefix persists leanval_owns_valset across restart (not RAM-only).
 	OwnsValsetPrefix byte = 0x00
+	// ObjectRootsPrefix: last committed deposit||bitfield||EB roots (32*3).
+	// VerifyLNPR binds Dummy instances to this store value, not the tx.
+	ObjectRootsPrefix byte = 0x04
 )
+
+// ObjectRootsSize is deposit(32) || bitfield(32) || eb(32).
+const ObjectRootsSize = 96
 
 // Inject prefixes (4-byte ASCII). Hashmerchant owns HMVE; we wrap, not replace.
 var (
@@ -34,6 +40,8 @@ const BlocksPerPeriod int64 = 600
 func TestLeanVerifierAcc() []byte { return make([]byte, 20) }
 
 func OwnsValsetKey() []byte { return []byte{OwnsValsetPrefix} }
+
+func ObjectRootsKey() []byte { return []byte{ObjectRootsPrefix} }
 
 func PeriodFromHeight(height int64) uint64 {
 	if height < 0 {

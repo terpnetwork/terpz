@@ -36,8 +36,8 @@ type BalanceAirPrivate struct {
 	FineBalance         int64
 }
 
-// BalanceAirInstanceBytes is period(8 BE)|weight(8 BE)|subject.
-// DummyStwo and a future Stwo arm must consume this layout.
+// BalanceAirInstanceBytes is period(8 BE)|weight(8 BE)|subject|object_roots(96 zeros if unset).
+// DummyStwo and a future Stwo arm must consume this layout. Roots come from store, not the tx.
 func BalanceAirInstanceBytes(period uint64, weight int64, subject []byte) []byte {
 	return instancesFor(period, subject, weight)
 }
@@ -78,7 +78,6 @@ func (StwoBalanceAir) VerifyBalanceAir(proof []byte, pub BalanceAirPublic, priv 
 	}
 	return nil
 }
-
 
 // StwoValsetAir proves/verifies the Phase 1A 6-byte valset AIR via pinned Stwo.
 type StwoValsetAir struct{}

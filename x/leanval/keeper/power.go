@@ -161,11 +161,42 @@ func (k *Keeper) rejectEmptyReplace(blob types.LNPRBlob) error {
 	return nil
 }
 
-// VerifyLNPR runs VerifyDummy on each subject. No store writes (ProcessProposal).
-func (k *Keeper) VerifyLNPR(blob types.LNPRBlob) error {
+// CheckLNPRUniqueness is Recheck-safe: empty-replace + duplicate subjects.
+// Never skip this on Recheck (vote-sdk: skip crypto, never skip uniqueness).
+func (k *Keeper) CheckLNPRUniqueness(blob types.LNPRBlob) error {
 	if err := k.rejectEmptyReplace(blob); err != nil {
 		return err
 	}
+	seen := make(map[string]struct{}, len(blob.Subjects))
+	for _, s := range blob.Subjects {
+		key := string(s.Subject)
+		if _, ok := seen[key]; ok {
+			return errProof("duplicate subject")
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+// VerifyLNPR runs uniqueness then Dummy verify with store-sourced object roots.
+// No store writes (ProcessProposal). skipCrypto is Recheck mode.
+func (k *Keeper) VerifyLNPR(blob types.LNPRBlob) error {
+	return k.verifyLNPR(blob, false)
+}
+
+// VerifyLNPRRecheck skips Dummy/FFI; still rejects empty replace and dup subjects.
+func (k *Keeper) VerifyLNPRRecheck(blob types.LNPRBlob) error {
+	return k.verifyLNPR(blob, true)
+}
+
+func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
+	if err := k.CheckLNPRUniqueness(blob); err != nil {
+		return err
+	}
+	if skipCrypto {
+		return nil
+	}
+	roots := k.LastObjectRoots()
 	for _, s := range blob.Subjects {
 		if k.gas != nil {
 			k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
@@ -173,7 +204,8 @@ func (k *Keeper) VerifyLNPR(blob types.LNPRBlob) error {
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
-		if err := k.verifyProof(s.Proof, instancesFor(blob.Period, s.Subject, s.Weight)); err != nil {
+		inst := instancesForRoots(blob.Period, s.Subject, s.Weight, roots)
+		if err := k.verifyProof(s.Proof, inst); err != nil {
 			return err
 		}
 	}

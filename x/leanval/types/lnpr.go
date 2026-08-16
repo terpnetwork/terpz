@@ -88,3 +88,14 @@ func DecodeLNPR(tx []byte) (LNPRBlob, bool) {
 
 // MaxProofBytes is the host cap (DUMMY-STWO). Larger → invalid, no verify.
 const MaxProofBytes = 2 << 20
+
+// TxDecoder is the subset of sdk.TxDecoder we wrap (avoid sdk import in types).
+type TxDecoder func([]byte) (any, error)
+
+// RejectMempoolLNPR is the vote-sdk CheckTx pattern: inject-class bytes never enter the mempool.
+func RejectMempoolLNPR(tx []byte) error {
+	if HasPrefix(tx, PrefixLNPR) {
+		return ErrMempoolLNPR
+	}
+	return nil
+}
