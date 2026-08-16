@@ -78,3 +78,102 @@ func cmdBondedSet() *cobra.Command {
 	flags.AddQueryFlagsToCmd(cmd)
 	return cmd
 }
+
+
+func cliTxCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:                        types.ModuleName,
+		Short:                      "Committed Lean join/leave (not lean-pending.json)",
+		DisableFlagParsing:         true,
+		SuggestionsMinimumDistance: 2,
+		RunE:                       client.ValidateCmd,
+	}
+	cmd.AddCommand(cmdJoin(), cmdLeave())
+	return cmd
+}
+
+func cmdJoin() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "join [hex-pubkey] [weight] [period]",
+		Short: "Broadcast JOIN bytes; BondedSet is written on commit",
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+			subj, err := hex.DecodeString(args[0])
+			if err != nil {
+				return err
+			}
+			w, err := strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				return err
+			}
+			per, err := strconv.ParseUint(args[2], 10, 64)
+			if err != nil {
+				return err
+			}
+			bz := types.EncodeJoin(types.JoinBlob{Period: per, Subject: subj, Weight: w})
+			if clientCtx.Offline {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), hex.EncodeToString(bz))
+				return err
+			}
+			if clientCtx.Client == nil {
+				return fmt.Errorf("no RPC client")
+			}
+			res, err := clientCtx.Client.BroadcastTxSync(cmd.Context(), bz)
+			if err != nil {
+				return err
+			}
+			out, err := json.MarshalIndent(res, "", "  ")
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintBytes(out)
+		},
+	}
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+func cmdLeave() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "leave [hex-pubkey] [period]",
+		Short: "Broadcast LEAV bytes; BondedSet drops the subject on commit",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+			subj, err := hex.DecodeString(args[0])
+			if err != nil {
+				return err
+			}
+			per, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return err
+			}
+			bz := types.EncodeLeave(types.LeaveBlob{Period: per, Subject: subj})
+			if clientCtx.Offline {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), hex.EncodeToString(bz))
+				return err
+			}
+			if clientCtx.Client == nil {
+				return fmt.Errorf("no RPC client")
+			}
+			res, err := clientCtx.Client.BroadcastTxSync(cmd.Context(), bz)
+			if err != nil {
+				return err
+			}
+			out, err := json.MarshalIndent(res, "", "  ")
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintBytes(out)
+		},
+	}
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}

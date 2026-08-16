@@ -496,7 +496,7 @@ func NewTerpApp(
 	app.SetInitChainer(app.InitChainer)
 	app.SetPreBlocker(app.PreBlocker)
 	app.SetBeginBlocker(app.BeginBlocker)
-	app.SetAnteHandler(anteHandler)
+	app.SetAnteHandler(leanval.WrapAnte(anteHandler))
 	app.setPostHandler()
 	app.SetEndBlocker(app.EndBlocker)
 	app.SetPrecommiter(app.Precommitter)
@@ -622,6 +622,9 @@ func (app *TerpApp) PreBlocker(ctx sdk.Context, req *abci.RequestFinalizeBlock) 
 	if app.LeanvalKeeper != nil {
 		app.LeanvalKeeper.BindContext(ctx)
 		if err := app.LeanvalKeeper.ProcessInjectedLNPR(req.Txs); err != nil {
+			return nil, err
+		}
+		if err := app.LeanvalKeeper.ProcessMembershipTxs(req.Txs); err != nil {
 			return nil, err
 		}
 	}
