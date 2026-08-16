@@ -57,3 +57,43 @@ func (k *Keeper) PendingMembershipTxs() [][]byte {
 	copy(out, k.memMembership)
 	return out
 }
+
+func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []SubjectPower {
+	leave := map[string]struct{}{}
+	var joins []SubjectPower
+	for _, tx := range k.PendingMembershipTxs() {
+		if l, ok := types.DecodeLeave(tx); ok {
+			leave[string(l.Subject)] = struct{}{}
+			continue
+		}
+		if j, ok := types.DecodeJoin(tx); ok {
+			if err := types.ValidateJoin(j); err != nil {
+				continue
+			}
+			if j.Period != 0 && j.Period != period {
+				continue
+			}
+			joins = append(joins, SubjectPower{Subject: j.Subject, Weight: j.Weight, HasProof: true})
+		}
+	}
+	out := make([]SubjectPower, 0, len(set)+len(joins))
+	seen := map[string]struct{}{}
+	for _, s := range set {
+		if _, drop := leave[string(s.Subject)]; drop {
+			continue
+		}
+		out = append(out, s)
+		seen[string(s.Subject)] = struct{}{}
+	}
+	for _, j := range joins {
+		if _, drop := leave[string(j.Subject)]; drop {
+			continue
+		}
+		if _, ok := seen[string(j.Subject)]; ok {
+			continue
+		}
+		out = append(out, j)
+		seen[string(j.Subject)] = struct{}{}
+	}
+	return out
+}

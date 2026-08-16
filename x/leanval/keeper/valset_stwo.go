@@ -34,9 +34,31 @@ func indexToHex5(index uint64) string {
 	return fmt.Sprintf("%010x", index)
 }
 
+func leanValsetAirBin() string {
+	if p := os.Getenv("LEAN_VALSET_AIR"); p != "" {
+		return p
+	}
+	if p, err := exec.LookPath("lean-valset-air"); err == nil {
+		return p
+	}
+	return ""
+}
+
 func proveValsetStwo(period, index uint64, eb uint8, _ []byte) ([]byte, error) {
+
 	if index >= (1 << 40) {
 		return nil, fmt.Errorf("leanval: valset AIR deposit index exceeds 5 bytes")
+	}
+	if bin := leanValsetAirBin(); bin != "" {
+		cmd := exec.Command(bin, "prove", strconv.FormatUint(period, 10), indexToHex5(index), strconv.FormatUint(uint64(eb), 10))
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("leanval: valset prove: %w: %s", err, bytes.TrimSpace(out))
+		}
+		if len(out) < 4 || !bytes.Equal(out[:4], []byte("STWO")) {
+			return nil, fmt.Errorf("leanval: valset prove did not emit STWO proof")
+		}
+		return out, nil
 	}
 	dir, err := leanStwoCrateDir()
 	if err != nil {

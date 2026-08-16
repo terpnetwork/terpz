@@ -197,15 +197,14 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 		return nil
 	}
 	roots := k.LastObjectRoots()
-	for _, s := range blob.Subjects {
+	for i, s := range blob.Subjects {
 		if k.gas != nil {
-			k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
+			k.gas.ConsumeGas(stwoDummyGas, "lean proof verify")
 		}
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
-		inst := instancesForRoots(blob.Period, s.Subject, s.Weight, roots)
-		if err := k.verifyProof(s.Proof, inst); err != nil {
+		if err := k.verifySubjectProof(blob.Period, uint64(i), s, roots); err != nil {
 			return err
 		}
 	}

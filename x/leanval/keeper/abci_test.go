@@ -121,3 +121,51 @@ func TestPrepareIncludesCometMembershipTxs(t *testing.T) {
 		t.Fatalf("JOIN from Comet req.Txs must be in proposal: %d txs", len(resp.Txs))
 	}
 }
+
+func TestProcessAcceptsLNPRThenJoin(t *testing.T) {
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AcceptProof(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10)
+	join := types.EncodeJoin(types.JoinBlob{Period: 0, Subject: []byte("joiner-ed25519-key-32bytesxxxxx"), Weight: 10})
+	prep := k.WrapPrepareProposal(func(req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
+		return &abci.ResponsePrepareProposal{Txs: req.Txs}, nil
+	})
+	prepResp, err := prep(&abci.RequestPrepareProposal{Height: 4, Txs: [][]byte{join}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := k.WrapProcessProposal(nil)
+	got, err := proc(&abci.RequestProcessProposal{Height: 4, Txs: prepResp.Txs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != abci.ResponseProcessProposal_ACCEPT {
+		t.Fatalf("Process REJECT with JOIN+LNPR (%d txs)", len(prepResp.Txs))
+	}
+	if err := k.ProcessInjectedLNPR(prepResp.Txs); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.ProcessMembershipTxs(prepResp.Txs); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(k.QueryBondedSet(0)); n != 2 {
+		t.Fatalf("BondedSet rows=%d want 2", n)
+	}
+}
+
+func TestBuildLNPRIncludesQueuedJoin(t *testing.T) {
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AllowDummy = true
+	k.AcceptProof(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10)
+	join := types.EncodeJoin(types.JoinBlob{Period: 0, Subject: []byte("joiner-ed25519-key-32bytesxxxxx"), Weight: 8})
+	k.NoteMembershipTx(join)
+	blob := types.EncodeLNPR(types.LNPRBlob{}) // placeholder
+	_ = blob
+	raw := k.buildLNPR(0)
+	decoded, ok := types.DecodeLNPR(raw)
+	if !ok {
+		t.Fatal("lnpr")
+	}
+	if len(decoded.Subjects) != 2 {
+		t.Fatalf("subjects=%d want 2 (genesis+join)", len(decoded.Subjects))
+	}
+}

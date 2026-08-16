@@ -80,14 +80,12 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 // replicas with the same app hash must propose the same set.
 func (k *Keeper) buildLNPR(period uint64) []byte {
 	set := k.BondedSetOrCarry(period)
-	roots := k.LastObjectRoots()
+	set = k.applyQueuedMembership(period, set)
 	subs := make([]types.SubjectProof, 0, len(set))
-	for _, s := range set {
-		subs = append(subs, types.SubjectProof{
-			Subject: s.Subject,
-			Weight:  s.Weight,
-			Proof:   DummyStwoProveBoundRoots(period, s.Subject, s.Weight, roots),
-		})
+	roots := k.LastObjectRoots()
+	for i, s := range set {
+		proof := k.proveSubject(period, uint64(i), s.Subject, s.Weight, roots)
+		subs = append(subs, types.SubjectProof{Subject: s.Subject, Weight: s.Weight, Proof: proof})
 	}
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 }

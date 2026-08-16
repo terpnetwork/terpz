@@ -14,6 +14,7 @@ type Keeper struct {
 	// Verifier is DummyStwoGo unless tests inject TestVerifier / ClosedVerifier.
 	Verifier      Verifier
 	RequireLNPR   bool
+	AllowDummy    bool
 	ownsValset    bool
 	pending       []abci.ValidatorUpdate
 	endPeriod     uint64
@@ -34,7 +35,7 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 	if store == nil {
 		store = NewMemStore()
 	}
-	return &Keeper{store: store, Verifier: v, RequireLNPR: true}
+	return &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
 }
 
 func (k *Keeper) SetOwnsValset(v bool) {
