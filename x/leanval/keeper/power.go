@@ -199,7 +199,7 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 	roots := k.LastObjectRoots()
 	for i, s := range blob.Subjects {
 		if k.gas != nil {
-			k.gas.ConsumeGas(stwoDummyGas, "lean proof verify")
+			k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
 		}
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
