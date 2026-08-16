@@ -168,3 +168,6 @@ distclean: clean
 	build-docker localnet-start localnet-stop test-docker test-docker-push \
 	test test-all test-cover
  
+.PHONY: docker-terpz
+docker-terpz: terpz
+	docker build -f Dockerfile.terpz -t terpnetwork/terp-core:terpz-lean .

@@ -73,10 +73,30 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 }
 
 func (k *Keeper) buildLNPR(period uint64) []byte {
-	// Proposer-local: include any locally known subjects already in store for P
-	// with their claimed proofs stored as zero-proof placeholders — real nodes
-	// fill proofs. Isolated stub injects an empty subject list (still a valid LNPR).
-	return types.EncodeLNPR(types.LNPRBlob{Period: period})
+	set := k.BondedSet(period)
+	subs := make([]types.SubjectProof, 0, len(set))
+	for _, s := range set {
+		a, b := dummySeeds(s.Subject)
+		subs = append(subs, types.SubjectProof{
+			Subject: s.Subject,
+			Weight:  s.Weight,
+			Proof:   DummyStwoProve(a, b),
+		})
+	}
+	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
+}
+
+func dummySeeds(subject []byte) (uint32, uint32) {
+	var a, b uint32
+	for i, x := range subject {
+		if i < 4 {
+			a |= uint32(x) << (8 * i)
+		} else if i < 8 {
+			b |= uint32(x) << (8 * (i - 4))
+		}
+	}
+	const p = uint32((1 << 31) - 1)
+	return a % p, b % p
 }
 
 // InjectLocalProofs is how a proposer attaches dummy proofs before Prepare.
