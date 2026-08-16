@@ -97,3 +97,46 @@ func TestPrivacy_SpecHashIsAddrThenSecret(t *testing.T) {
 		t.Fatalf("spec hash is SHA256(addr||secret)")
 	}
 }
+
+func TestPrivacy_SameSecretDifferentAddrDiffers(t *testing.T) {
+	air := HashAddrSecretWithdrawal{}
+	secret := []byte("shared-secret")
+	a, err := air.Commit([]byte("addr-A"), secret)
+	if err != nil {
+		t.Fatalf("LEAN-7 withdrawal not implemented (red): %v", err)
+	}
+	b, err := air.Commit([]byte("addr-B"), secret)
+	if err != nil {
+		t.Fatalf("LEAN-7 withdrawal not implemented (red): %v", err)
+	}
+	if a == b {
+		t.Fatal("H(addr,secret) must change when addr changes")
+	}
+}
+
+func TestPrivacy_CommitDoesNotRevealAddr(t *testing.T) {
+	air := HashAddrSecretWithdrawal{}
+	addr := []byte("terp1hiddenwithdrawaddr00000000000")
+	got, err := air.Commit(addr, []byte("s"))
+	if err != nil {
+		t.Fatalf("LEAN-7 withdrawal not implemented (red): %v", err)
+	}
+	if bytes.Contains(got[:], addr) {
+		t.Fatal("commitment must not embed the withdrawal address")
+	}
+}
+
+func TestPrivacy_HashOrderIsNotSecretThenAddr(t *testing.T) {
+	air := HashAddrSecretWithdrawal{}
+	addr := []byte{0x01, 0x02}
+	secret := []byte{0x03, 0x04}
+	got, err := air.Commit(addr, secret)
+	if err != nil {
+		t.Fatalf("LEAN-7 withdrawal not implemented (red): %v", err)
+	}
+	reversed := sha256.Sum256([]byte{0x03, 0x04, 0x01, 0x02})
+	if got == reversed {
+		t.Fatal("commit must be SHA256(addr||secret), not SHA256(secret||addr)")
+	}
+}
+
