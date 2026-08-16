@@ -1,9 +1,12 @@
 package leanval
 
 import (
-	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strconv"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/spf13/cobra"
@@ -26,7 +29,7 @@ func cliQueryCmd() *cobra.Command {
 func cmdBondedSet() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bonded-set [period]",
-		Short: "Query lean_store.bonded_set(P)",
+		Short: "Query lean_store.bonded_set(P) via ABCI store/subspace (no proto Query)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -37,12 +40,39 @@ func cmdBondedSet() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			qc := types.NewQueryClient(clientCtx)
-			res, err := qc.BondedSet(context.Background(), &types.QueryBondedSetRequest{Period: p})
+			res, err := clientCtx.QueryABCI(abci.RequestQuery{
+				Path:  fmt.Sprintf("/store/%s/subspace", types.StoreKey),
+				Data:  types.BondedPrefixForPeriod(p),
+				Prove: false,
+			})
 			if err != nil {
 				return err
 			}
-			return clientCtx.PrintObjectLegacy(res)
+			rows, err := types.DecodeBondedSubspace(p, res.Value)
+			if err != nil {
+				return err
+			}
+			type outRow struct {
+				Subject  string `json:"subject"`
+				Weight   int64  `json:"weight"`
+				HasProof bool   `json:"has_proof"`
+			}
+			out := struct {
+				Period uint64   `json:"period"`
+				Rows   []outRow `json:"rows"`
+			}{Period: p}
+			for _, r := range rows {
+				out.Rows = append(out.Rows, outRow{
+					Subject:  hex.EncodeToString(r.Subject),
+					Weight:   r.Weight,
+					HasProof: r.HasProof,
+				})
+			}
+			bz, err := json.MarshalIndent(out, "", "  ")
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintBytes(bz)
 		},
 	}
 	flags.AddQueryFlagsToCmd(cmd)

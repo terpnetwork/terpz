@@ -171,3 +171,13 @@ distclean: clean
 .PHONY: docker-terpz
 docker-terpz: terpz
 	docker build -f Dockerfile.terpz -t terpnetwork/terp-core:terpz-lean .
+
+# Linux/arm64 terpz for Alpine ICT (host is darwin/arm64). Ledger off.
+.PHONY: terpz-linux docker-terpz-linux
+terpz-linux: build-check-version go.sum
+	mkdir -p $(BUILDDIR)/
+	LEDGER_ENABLED=false CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOWORK=off 		go build -mod=readonly -tags netgo 		-ldflags '$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz' 		-o $(BUILDDIR)/terpz-linux $(GO_MODULE)/cmd/terpd
+
+docker-terpz-linux: terpz-linux
+	cp $(BUILDDIR)/terpz-linux $(BUILDDIR)/terpz
+	docker build --platform linux/arm64 -f Dockerfile.terpz -t terpnetwork/terp-core:terpz-lean .
