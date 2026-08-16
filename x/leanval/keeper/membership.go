@@ -39,3 +39,21 @@ func (k *Keeper) ProcessMembershipTxs(txs [][]byte) error {
 	}
 	return nil
 }
+
+func (k *Keeper) NoteMembershipTx(tx []byte) {
+	if !types.IsMembershipTx(tx) {
+		return
+	}
+	for _, existing := range k.memMembership {
+		if string(existing) == string(tx) {
+			return
+		}
+	}
+	k.memMembership = append(k.memMembership, append([]byte(nil), tx...))
+}
+
+func (k *Keeper) PendingMembershipTxs() [][]byte {
+	out := make([][]byte, len(k.memMembership))
+	copy(out, k.memMembership)
+	return out
+}

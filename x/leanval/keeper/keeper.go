@@ -12,18 +12,19 @@ import (
 type Keeper struct {
 	store Store
 	// Verifier is DummyStwoGo unless tests inject TestVerifier / ClosedVerifier.
-	Verifier    Verifier
-	RequireLNPR bool
-	ownsValset  bool
-	pending     []abci.ValidatorUpdate
-	endPeriod   uint64
-	sk          storetypes.StoreKey
-	gas         storetypes.GasMeter
-	wasmSudo    WasmSudoClient
-	verifierAcc []byte
-	leanZkID    uint64
-	sdkCtx      sdk.Context
-	hasCtx      bool
+	Verifier      Verifier
+	RequireLNPR   bool
+	ownsValset    bool
+	pending       []abci.ValidatorUpdate
+	endPeriod     uint64
+	sk            storetypes.StoreKey
+	gas           storetypes.GasMeter
+	wasmSudo      WasmSudoClient
+	verifierAcc   []byte
+	leanZkID      uint64
+	sdkCtx        sdk.Context
+	hasCtx        bool
+	memMembership [][]byte
 }
 
 func NewKeeper(store Store, v Verifier) *Keeper {

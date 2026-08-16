@@ -38,6 +38,7 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 		txs = injectLNPR(txs, lnpr)
 		// App mempool ignores Comet req.Txs (ADR-060). Re-include CheckTx-ok JOIN/LEAV.
 		txs = appendMembershipFromComet(txs, req.Txs)
+		txs = appendMembershipFromComet(txs, k.PendingMembershipTxs())
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
 	}
 }
