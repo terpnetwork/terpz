@@ -13,6 +13,7 @@ import (
 type StakingModule interface {
 	module.AppModule
 	EndBlock(context.Context) ([]abci.ValidatorUpdate, error)
+	RegisterServices(module.Configurator)
 }
 
 // WrappedStaking runs staking EndBlock (unbonding etc.) but drops ValidatorUpdates
@@ -32,4 +33,8 @@ func (w WrappedStaking) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, e
 		return []abci.ValidatorUpdate{}, err
 	}
 	return u, err
+}
+
+func (w WrappedStaking) RegisterServices(cfg module.Configurator) {
+	w.StakingModule.RegisterServices(cfg)
 }
