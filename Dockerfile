@@ -102,9 +102,9 @@ RUN ARCH=$(uname -m) && \
     fi
 
 # force it to use static lib (from above) not standard libgo_cosmwasm.so file
-RUN go mod tidy && LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make build
+RUN go mod tidy && LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make terpz
 RUN echo "Ensuring binary is statically linked ..." \
-  && (file /code/build/terpd | grep "statically linked")
+  && (file /code/build/terpz | grep "statically linked")
 
 # ---------------------------------------------------------
 # 1. Runtime image — standard (github wasmvm)
@@ -114,7 +114,8 @@ FROM ${RUNNER_IMAGE} AS runtime
 # Copy ca-certificates from builder (works on distroless, Alpine, and nonroot)
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=go-builder /code/build/terpd /usr/local/bin/terpd
+COPY --from=go-builder /code/build/terpz /usr/local/bin/terpz
+RUN ln -sf /usr/local/bin/terpz /usr/local/bin/terpd
 
 ENV HOME=/terpd
 WORKDIR $HOME
@@ -139,7 +140,8 @@ RUN apk add --no-cache \
 
 RUN rm -rf /var/lib/apt/lists/* && npm i -g local-cors-proxy
 
-COPY --from=go-builder /code/build/terpd /usr/local/bin/terpd
+COPY --from=go-builder /code/build/terpz /usr/local/bin/terpz
+RUN ln -sf /usr/local/bin/terpz /usr/local/bin/terpd
 
 WORKDIR /code
 COPY docker/localterp/bootstrap.sh .
