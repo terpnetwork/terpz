@@ -72,9 +72,20 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 	return k.VerifyLNPR(blob)
 }
 
+// buildLNPR encodes Dummy proofs for the committed BondedSet only.
+// Disk lean-pending.json / LEANVAL_PENDING is not admission: two honest
+// replicas with the same app hash must propose the same set.
 func (k *Keeper) buildLNPR(period uint64) []byte {
 	set := k.BondedSetOrCarry(period)
-	subs := k.mergePending(period, set)
+	roots := k.LastObjectRoots()
+	subs := make([]types.SubjectProof, 0, len(set))
+	for _, s := range set {
+		subs = append(subs, types.SubjectProof{
+			Subject: s.Subject,
+			Weight:  s.Weight,
+			Proof:   DummyStwoProveBoundRoots(period, s.Subject, s.Weight, roots),
+		})
+	}
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 }
 

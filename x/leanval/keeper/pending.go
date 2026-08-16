@@ -10,9 +10,9 @@ import (
 	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
-// PendingFile is the ICT / operator admission list. Same bytes on every
-// proposer: join subjects are appended to LNPR; leave subjects are omitted.
-// Default path matches Dockerfile.terpz HOME=/terpd.
+// PendingFile helpers exist only for unit tests of the old ICT sidecar format.
+// Production Prepare must not call mergePending / loadPending.
+// Join and leave are committed by the app (ApplyLNPR / msgs), not this file.
 const DefaultPendingPath = "/terpd/.terpd/config/lean-pending.json"
 
 type pendingFile struct {

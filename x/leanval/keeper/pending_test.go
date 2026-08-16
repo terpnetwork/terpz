@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"encoding/hex"
+	abci "github.com/cometbft/cometbft/abci/types"
 	"os"
 	"path/filepath"
 	"testing"
@@ -125,5 +126,38 @@ func TestMergePendingJoinAndLeave(t *testing.T) {
 	}
 	if !sawJoin || sawLeave {
 		t.Fatalf("pending merge: %+v", subs)
+	}
+}
+
+func TestPrepareIgnoresPendingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "lean-pending.json")
+	join := make([]byte, 32)
+	join[0] = 0xdd
+	body := []byte(`{"join":[{"pubkey":"` + hex.EncodeToString(join) + `","weight":99}],"leave":[]}`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LEANVAL_PENDING", path)
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	stay := make([]byte, 32)
+	stay[0] = 0xaa
+	k.AcceptProof(0, stay, 10)
+	h := k.WrapPrepareProposal(nil)
+	resp, err := h(&abci.RequestPrepareProposal{Height: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, _, ok := FindLNPR(resp.Txs)
+	if !ok {
+		t.Fatal("expected LNPR")
+	}
+	for _, s := range blob.Subjects {
+		if len(s.Subject) > 0 && s.Subject[0] == 0xdd {
+			t.Fatalf("Prepare admitted disk join: %+v", blob.Subjects)
+		}
+	}
+	if len(blob.Subjects) != 1 || blob.Subjects[0].Subject[0] != 0xaa {
+		t.Fatalf("want committed stay only: %+v", blob.Subjects)
 	}
 }
