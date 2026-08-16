@@ -188,8 +188,6 @@ func orderBeginBlockers() []string {
 		cwhookstypes.ModuleName,
 		hashmerchanttypes.ModuleName,
 		leanvaltypes.ModuleName,
-		leanvaltypes.ModuleName,
-		leanvaltypes.ModuleName,
 		wasmtypes.ModuleName,
 		wasmlctypes.ModuleName,
 	}
@@ -201,6 +199,7 @@ func orderEndBlockers() []string {
 		crisistypes.ModuleName,
 		govtypes.ModuleName,
 		stakingtypes.ModuleName,
+		leanvaltypes.ModuleName,
 		authtypes.ModuleName,
 		distrtypes.ModuleName,
 		slashingtypes.ModuleName,
@@ -234,7 +233,7 @@ func orderEndBlockers() []string {
 func orderInitBlockers() []string {
 	return []string{
 		authtypes.ModuleName, banktypes.ModuleName,
-		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
+		distrtypes.ModuleName, stakingtypes.ModuleName, leanvaltypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
 		feegrant.ModuleName, paramstypes.ModuleName, upgradetypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
