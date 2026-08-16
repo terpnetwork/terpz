@@ -64,9 +64,7 @@ func (am AppModule) IsOnePerModuleType()      {}
 func (am AppModule) IsAppModule()             {}
 func (AppModule) ConsensusVersion() uint64    { return 1 }
 
-func (am AppModule) RegisterServices(cfg module.Configurator) {
-	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(am.k))
-}
+func (am AppModule) RegisterServices(module.Configurator) {}
 
 func (am AppModule) InitGenesis(ctx sdk.Context, _ codec.JSONCodec, bz json.RawMessage) {
 	if am.k != nil {
