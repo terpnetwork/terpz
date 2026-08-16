@@ -29,7 +29,7 @@ func (UnimplementedSSLE) RevealProposerAfterBlock(period uint64, height int64, b
 }
 
 func TestSSLE_ProposerIDHiddenUntilBlock(t *testing.T) {
-	ssle := UnimplementedSSLE{}
+	ssle := HideUntilBlockSSLE{}
 	row := sslePublicSchedule{
 		period:          3,
 		height:          42,
@@ -49,7 +49,7 @@ func TestSSLE_ProposerIDHiddenUntilBlock(t *testing.T) {
 }
 
 func TestSSLE_RevealOnlyWithBlock(t *testing.T) {
-	ssle := UnimplementedSSLE{}
+	ssle := HideUntilBlockSSLE{}
 	id, err := ssle.RevealProposerAfterBlock(3, 42, []byte("block-bytes"))
 	if err != nil {
 		t.Fatalf("SSLE reveal not implemented (red): %v", err)
