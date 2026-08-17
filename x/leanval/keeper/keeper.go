@@ -36,7 +36,7 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 		store = NewMemStore()
 	}
 	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
-	if leanValsetAirBin() != "" {
+	if leanValsetAirBin() != "" || foldBin() != "" {
 		k.AllowDummy = false
 	}
 	return k

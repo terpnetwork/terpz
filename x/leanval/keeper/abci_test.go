@@ -124,6 +124,7 @@ func TestPrepareIncludesCometMembershipTxs(t *testing.T) {
 
 func TestProcessAcceptsLNPRThenJoin(t *testing.T) {
 	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AllowDummy = true
 	k.AcceptProof(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10)
 	join := types.EncodeJoin(types.JoinBlob{Period: 0, Subject: []byte("joiner-ed25519-key-32bytesxxxxx"), Weight: 10})
 	prep := k.WrapPrepareProposal(func(req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {

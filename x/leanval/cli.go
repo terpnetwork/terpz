@@ -11,6 +11,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/spf13/cobra"
 
+	"github.com/terpnetwork/terp-core/v6/x/leanval/keeper"
 	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
@@ -22,7 +23,7 @@ func cliQueryCmd() *cobra.Command {
 		SuggestionsMinimumDistance: 2,
 		RunE:                       client.ValidateCmd,
 	}
-	cmd.AddCommand(cmdBondedSet())
+	cmd.AddCommand(cmdBondedSet(), cmdFoldVerify())
 	return cmd
 }
 
@@ -79,6 +80,19 @@ func cmdBondedSet() *cobra.Command {
 	return cmd
 }
 
+
+
+func cmdFoldVerify() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "fold-verify [proof-file] [a,b]...",
+		Short: "ONE Stwo (prover_id=2 M31) same-statement fold verify; Dummy-N fails",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return keeper.FoldVerifyFile(args[0], args[1:])
+		},
+	}
+	return cmd
+}
 
 func cliTxCmd() *cobra.Command {
 	cmd := &cobra.Command{

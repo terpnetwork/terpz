@@ -87,8 +87,18 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 	subs := make([]types.SubjectProof, 0, len(set))
 	roots := k.LastObjectRoots()
 	for i, s := range set {
-		proof := k.proveSubject(period, uint64(i), s.Subject, s.Weight, roots)
-		subs = append(subs, types.SubjectProof{Subject: s.Subject, Weight: s.Weight, Proof: proof})
+		subs = append(subs, types.SubjectProof{Subject: s.Subject, Weight: s.Weight})
+		_ = i
+	}
+	pairs := foldPairStrings(period, subs, roots)
+	if fold, err := ProveSameStatementFold(pairs); err == nil && len(fold) > 0 && len(subs) > 0 {
+		subs[0].Proof = fold
+		return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
+	}
+	if k.AllowDummy {
+		for i := range subs {
+			subs[i].Proof = DummyStwoProveBoundRoots(period, subs[i].Subject, subs[i].Weight, roots)
+		}
 	}
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 }

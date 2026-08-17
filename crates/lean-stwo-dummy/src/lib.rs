@@ -295,6 +295,9 @@ mod balance;
 mod valset;
 
 #[cfg(feature = "real-stwo")]
+mod fold;
+
+#[cfg(feature = "real-stwo")]
 pub use real::{prove_ab_hash, verify_ab_hash, RealStwo};
 
 #[cfg(feature = "real-stwo")]
@@ -302,6 +305,9 @@ pub use balance::{prove_balance, verify_balance};
 
 #[cfg(feature = "real-stwo")]
 pub use valset::{prove_valset, valset_instance_bytes, verify_valset, VALSET_STATE_LEN};
+
+#[cfg(feature = "real-stwo")]
+pub use fold::{prove_fold, reject_dummy_n, verify_fold, FOLD_KIND};
 
 #[cfg(test)]
 mod tests {
@@ -508,5 +514,62 @@ mod tests {
         let i = proof.len() / 2;
         proof[i] ^= 1;
         assert!(crate::verify_valset(&proof, period, idx, 32).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_fold_n_instances_one_verify() {
+        let pairs = [
+            (M31::new(1).unwrap(), M31::new(2).unwrap()),
+            (M31::new(3).unwrap(), M31::new(4).unwrap()),
+            (M31::new(5).unwrap(), M31::new(6).unwrap()),
+        ];
+        let proof = crate::prove_fold(&pairs).expect("prove fold");
+        assert_eq!(&proof[0..4], STWO_MAGIC);
+        assert_eq!(&proof[6..10], crate::FOLD_KIND);
+        crate::verify_fold(&proof, &pairs).expect("one verify");
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_fold_dummy_n_fails() {
+        let a = M31::new(1).unwrap();
+        let b = M31::new(2).unwrap();
+        let d1 = DummyStwo::prove(a, b);
+        let d2 = DummyStwo::prove(M31::new(3).unwrap(), M31::new(4).unwrap());
+        let mut concat = d1.clone();
+        concat.extend_from_slice(&d2);
+        let pairs = [(a, b), (M31::new(3).unwrap(), M31::new(4).unwrap())];
+        assert!(crate::verify_fold(&concat, &pairs).is_err(), "Dummy-N must FAIL");
+        assert!(crate::reject_dummy_n(&concat).is_err());
+        assert!(crate::verify_fold(&d1, &pairs).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_fold_wrong_instance_rejects() {
+        let pairs = [
+            (M31::new(1).unwrap(), M31::new(2).unwrap()),
+            (M31::new(3).unwrap(), M31::new(4).unwrap()),
+        ];
+        let proof = crate::prove_fold(&pairs).expect("prove");
+        let other = [
+            (M31::new(1).unwrap(), M31::new(2).unwrap()),
+            (M31::new(9).unwrap(), M31::new(4).unwrap()),
+        ];
+        assert!(crate::verify_fold(&proof, &other).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_fold_bitflip_rejects() {
+        let pairs = [
+            (M31::new(11).unwrap(), M31::new(22).unwrap()),
+            (M31::new(33).unwrap(), M31::new(44).unwrap()),
+        ];
+        let mut proof = crate::prove_fold(&pairs).expect("prove");
+        let i = proof.len() / 2;
+        proof[i] ^= 1;
+        assert!(crate::verify_fold(&proof, &pairs).is_err());
     }
 }

@@ -196,11 +196,23 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 	if skipCrypto {
 		return nil
 	}
+	if k.gas != nil {
+		k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
+	}
+	if len(blob.Subjects) == 0 {
+		return nil
+	}
 	roots := k.LastObjectRoots()
-	for i, s := range blob.Subjects {
-		if k.gas != nil {
-			k.gas.ConsumeGas(stwoDummyGas, "stwo dummy verify")
+	if fold := foldProofFromLNPR(blob); fold != nil {
+		if len(fold) > types.MaxProofBytes {
+			return errProof("proof too large")
 		}
+		return VerifySameStatementFold(fold, foldPairStrings(blob.Period, blob.Subjects, roots))
+	}
+	if !k.AllowDummy {
+		return errProof("STWO FOLD required (no per-subject Dummy waist)")
+	}
+	for i, s := range blob.Subjects {
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
@@ -211,7 +223,6 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 	return nil
 }
 
-// ApplyLNPR verifies then writes bonded_set. Fail-closed.
 func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 	if err := k.VerifyLNPR(blob); err != nil {
 		return err

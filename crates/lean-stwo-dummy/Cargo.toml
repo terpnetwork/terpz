@@ -32,3 +32,8 @@ serde = { version = "1.0", optional = true, features = ["derive"] }
 name = "lean-valset-air"
 path = "src/bin/valset_air.rs"
 required-features = ["real-stwo"]
+
+[[bin]]
+name = "lean-stwo-fold"
+path = "src/bin/fold_air.rs"
+required-features = ["real-stwo"]
