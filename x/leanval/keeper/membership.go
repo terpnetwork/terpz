@@ -97,3 +97,7 @@ func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []Subj
 	}
 	return out
 }
+
+func (k *Keeper) ClearPendingMembership() {
+	k.memMembership = nil
+}
