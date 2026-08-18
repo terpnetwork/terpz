@@ -34,7 +34,7 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 			txs = append([][]byte(nil), req.Txs...)
 		}
 		period := types.PeriodFromHeight(req.Height)
-		// Bit flip is app-state + proof. Do not rebuild the JOIN CheckTx inbox.
+		txs = mergeMembershipFromComet(req.Txs, txs)
 		lnpr := k.buildLNPR(period)
 		txs = injectLNPR(txs, lnpr)
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
@@ -107,6 +107,25 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 // InjectLocalProofs is how a proposer attaches dummy proofs before Prepare.
 func (k *Keeper) InjectLocalProofs(period uint64, subjects []types.SubjectProof) []byte {
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subjects})
+}
+
+func mergeMembershipFromComet(reqTxs, proposed [][]byte) [][]byte {
+	out := append([][]byte(nil), proposed...)
+	seen := map[string]struct{}{}
+	for _, tx := range out {
+		seen[string(tx)] = struct{}{}
+	}
+	for _, tx := range reqTxs {
+		if !types.IsMembershipTx(tx) {
+			continue
+		}
+		if _, ok := seen[string(tx)]; ok {
+			continue
+		}
+		out = append(out, append([]byte(nil), tx...))
+		seen[string(tx)] = struct{}{}
+	}
+	return out
 }
 
 func injectLNPR(txs [][]byte, lnpr []byte) [][]byte {
