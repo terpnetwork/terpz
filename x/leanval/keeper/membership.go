@@ -1,6 +1,17 @@
 package keeper
 
-import "github.com/terpnetwork/terp-core/v6/x/leanval/types"
+import (
+	"sync"
+
+	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
+)
+
+// Process-wide membership queue. CheckTx and Prepare must see the same
+// JOIN/LEAV even if a Keeper pointer is not the one we think it is.
+var membershipQ struct {
+	mu  sync.Mutex
+	txs [][]byte
+}
 
 // ApplyJoin writes a BondedSet row. Next honest Prepare includes this subject
 // from committed state — not from disk lean-pending.json.
@@ -44,18 +55,30 @@ func (k *Keeper) NoteMembershipTx(tx []byte) {
 	if !types.IsMembershipTx(tx) {
 		return
 	}
-	for _, existing := range k.memMembership {
+	membershipQ.mu.Lock()
+	defer membershipQ.mu.Unlock()
+	for _, existing := range membershipQ.txs {
 		if string(existing) == string(tx) {
 			return
 		}
 	}
-	k.memMembership = append(k.memMembership, append([]byte(nil), tx...))
+	membershipQ.txs = append(membershipQ.txs, append([]byte(nil), tx...))
 }
 
 func (k *Keeper) PendingMembershipTxs() [][]byte {
-	out := make([][]byte, len(k.memMembership))
-	copy(out, k.memMembership)
+	membershipQ.mu.Lock()
+	defer membershipQ.mu.Unlock()
+	out := make([][]byte, len(membershipQ.txs))
+	for i, tx := range membershipQ.txs {
+		out[i] = append([]byte(nil), tx...)
+	}
 	return out
+}
+
+func (k *Keeper) ClearPendingMembership() {
+	membershipQ.mu.Lock()
+	defer membershipQ.mu.Unlock()
+	membershipQ.txs = nil
 }
 
 func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []SubjectPower {
@@ -96,8 +119,4 @@ func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []Subj
 		seen[string(j.Subject)] = struct{}{}
 	}
 	return out
-}
-
-func (k *Keeper) ClearPendingMembership() {
-	k.memMembership = nil
 }

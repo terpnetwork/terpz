@@ -628,12 +628,6 @@ func (app *TerpApp) PreBlocker(ctx sdk.Context, req *abci.RequestFinalizeBlock) 
 		if err := app.LeanvalKeeper.ProcessMembershipTxs(req.Txs); err != nil {
 			return nil, err
 		}
-		// JOIN/LEAV may live in Comet mempool without landing as block txs
-		// (ADR-060 reap). Every replica that CheckTx-noted them applies here.
-		if err := app.LeanvalKeeper.ProcessMembershipTxs(app.LeanvalKeeper.PendingMembershipTxs()); err != nil {
-			return nil, err
-		}
-		app.LeanvalKeeper.ClearPendingMembership()
 	}
 
 	mm := app.ModuleManager()
