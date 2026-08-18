@@ -150,3 +150,38 @@ func TestStorePendingJoinSurvivesLNPRReplace(t *testing.T) {
 		t.Fatalf("BondedSet=%d want 2 (pending join survives dropUnlisted)", n)
 	}
 }
+
+func TestPrepareAppendsStorePendingJoinTx(t *testing.T) {
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AllowDummy = true
+	stay := bytes.Repeat([]byte{0xaa}, 32)
+	join := bytes.Repeat([]byte{0xbb}, 32)
+	k.AcceptProof(0, stay, 10)
+	if err := k.ApplyJoin(types.JoinBlob{Period: 0, Subject: join, Weight: 8}); err != nil {
+		t.Fatal(err)
+	}
+	k.ClearPendingMembership()
+	h := k.WrapPrepareProposal(nil)
+	resp, err := h(&abci.RequestPrepareProposal{Height: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tx := range resp.Txs {
+		if j, ok := types.DecodeJoin(tx); ok && bytes.Equal(j.Subject, join) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("store pending join must be in proposal txs: %d", len(resp.Txs))
+	}
+	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.ProcessMembershipTxs(resp.Txs); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(k.QueryBondedSet(0)); n != 2 {
+		t.Fatalf("BondedSet=%d want 2", n)
+	}
+}

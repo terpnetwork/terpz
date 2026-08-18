@@ -77,6 +77,40 @@ func (k *Keeper) PendingMembershipTxs() [][]byte {
 	return out
 }
 
+func (k *Keeper) StoredMembershipTxs(period uint64) [][]byte {
+	var out [][]byte
+	emitJoin := func(per uint64) {
+		pref := types.PendingJoinPrefixForPeriod(per)
+		k.store.IteratePrefix(pref, func(key, value []byte) bool {
+			subj := key[len(pref):]
+			out = append(out, types.EncodeJoin(types.JoinBlob{
+				Period:  per,
+				Subject: append([]byte(nil), subj...),
+				Weight:  types.GetI64(value),
+			}))
+			return true
+		})
+	}
+	emitLeave := func(per uint64) {
+		pref := types.PendingLeavePrefixForPeriod(per)
+		k.store.IteratePrefix(pref, func(key, _ []byte) bool {
+			subj := key[len(pref):]
+			out = append(out, types.EncodeLeave(types.LeaveBlob{
+				Period:  per,
+				Subject: append([]byte(nil), subj...),
+			}))
+			return true
+		})
+	}
+	emitJoin(period)
+	emitLeave(period)
+	if period != 0 {
+		emitJoin(0)
+		emitLeave(0)
+	}
+	return out
+}
+
 func (k *Keeper) ClearPendingMembership() {
 	membershipQ.mu.Lock()
 	defer membershipQ.mu.Unlock()
