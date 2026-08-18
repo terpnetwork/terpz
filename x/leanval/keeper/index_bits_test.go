@@ -248,3 +248,26 @@ func TestQueryBitI(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryBondedSetIsDebugViewNotRosterSoT(t *testing.T) {
+	on := testPub(0x51)
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.InitGenesis(types.GenesisState{
+		OwnsValset:      true,
+		GenesisSubjects: []types.GenesisSubject{{PubKey: on, Weight: 16}},
+	})
+	k.Store().IteratePrefix([]byte{types.BondedPrefix}, func(key, _ []byte) bool {
+		k.Store().Delete(key)
+		return true
+	})
+	if n := len(k.BondedSet(0)); n != 0 {
+		t.Fatalf("BondedSet wipe failed: %d", n)
+	}
+	q := k.QueryBondedSet(0)
+	if len(q) != 1 {
+		t.Fatalf("debug BondedSet query must rebuild from bits, got %d (roster is not SoT)", len(q))
+	}
+	if !bytes.Equal(q[0].Subject, on) || q[0].Weight != 16 {
+		t.Fatalf("query row want subject+EB, got %+v", q[0])
+	}
+}

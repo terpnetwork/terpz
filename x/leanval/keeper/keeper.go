@@ -73,7 +73,13 @@ func (k *Keeper) Store() Store { return k.store }
 
 func (k *Keeper) SetGasMeter(g storetypes.GasMeter) { k.gas = g }
 
-// QueryBondedSet is the keeper query (CLI: terpz query leanval bonded-set [period]).
+// QueryBondedSet is a debug view. Membership SoT is deposit index + bitfield + EB
+// (SOURCES 1A/1B). Do not treat this as the bitfield or as Comet VP wiring.
 func (k *Keeper) QueryBondedSet(period uint64) []SubjectPower {
+	if k.nextDepositIndex() > 0 || len(k.store.Get(types.BitfieldKey())) > 0 {
+		if bits := k.DebugSubjectsFromBits(); len(bits) > 0 {
+			return bits
+		}
+	}
 	return k.BondedSet(period)
 }

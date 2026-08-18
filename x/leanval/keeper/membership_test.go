@@ -176,3 +176,28 @@ func TestPrepareAppendsStorePendingJoinTx(t *testing.T) {
 		t.Fatalf("BondedSet=%d want 2", n)
 	}
 }
+
+func TestJoinWithoutReqTxsSetsBitNextLNPRKeeps(t *testing.T) {
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AllowDummy = true
+	stay := bytes.Repeat([]byte{0xaa}, 32)
+	join := bytes.Repeat([]byte{0xbb}, 32)
+	k.AcceptProof(0, stay, 10)
+	if err := k.ApplyJoin(types.JoinBlob{Period: 0, Subject: join, Weight: 8}); err != nil {
+		t.Fatal(err)
+	}
+	if !k.BitIsSet(1) {
+		t.Fatal("JOIN without req.Txs must AllocateIndex+BitSet")
+	}
+	prep := k.WrapPrepareProposal(nil)
+	resp, err := prep(&abci.RequestPrepareProposal{Height: 2, Txs: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
+		t.Fatal(err)
+	}
+	if !k.BitIsSet(1) {
+		t.Fatal("next LNPR must not wipe join bit")
+	}
+}

@@ -154,21 +154,3 @@ func (k *Keeper) ProcessInjectedLNPR(txs [][]byte) error {
 	}
 	return k.ApplyLNPR(blob)
 }
-
-func appendMembershipFromComet(txs, comet [][]byte) [][]byte {
-	seen := map[string]struct{}{}
-	for _, tx := range txs {
-		seen[string(tx)] = struct{}{}
-	}
-	for _, tx := range comet {
-		if !types.IsMembershipTx(tx) {
-			continue
-		}
-		if _, ok := seen[string(tx)]; ok {
-			continue
-		}
-		txs = append(txs, tx)
-		seen[string(tx)] = struct{}{}
-	}
-	return txs
-}
