@@ -133,3 +133,31 @@ func appendUvarint(b []byte, x uint64) []byte {
 	}
 	return append(b, byte(x))
 }
+
+// KV is one IAVL pair from /store/leanval/subspace.
+type KV struct{ Key, Value []byte }
+
+// DecodeSubspacePairs unpacks cosmos store kv.Pairs proto.
+func DecodeSubspacePairs(bz []byte) ([]KV, error) {
+	raw, err := decodeKVPairs(bz)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]KV, len(raw))
+	for i, p := range raw {
+		out[i] = KV{Key: p.key, Value: p.value}
+	}
+	return out, nil
+}
+
+// CountSetBits counts 1-bits in a participation bitfield.
+func CountSetBits(bf []byte) int {
+	n := 0
+	for _, b := range bf {
+		for b != 0 {
+			n++
+			b &= b - 1
+		}
+	}
+	return n
+}

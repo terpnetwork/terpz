@@ -25,7 +25,7 @@ func (k *Keeper) InitGenesis(gs types.GenesisState) {
 
 func (k *Keeper) ExportGenesis() types.GenesisState {
 	gs := types.GenesisState{OwnsValset: k.OwnsValset()}
-	for _, s := range k.BondedSet(0) {
+	for _, s := range k.DebugSubjectsFromBits() {
 		gs.GenesisSubjects = append(gs.GenesisSubjects, types.GenesisSubject{
 			PubKey: append([]byte(nil), s.Subject...),
 			Weight: s.Weight,
