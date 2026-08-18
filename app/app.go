@@ -627,9 +627,6 @@ func (app *TerpApp) PreBlocker(ctx sdk.Context, req *abci.RequestFinalizeBlock) 
 		if err := app.LeanvalKeeper.ProcessInjectedLNPR(req.Txs); err != nil {
 			return nil, err
 		}
-		if err := app.LeanvalKeeper.ProcessMembershipTxs(req.Txs); err != nil {
-			return nil, err
-		}
 	}
 
 	mm := app.ModuleManager()
