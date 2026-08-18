@@ -61,7 +61,7 @@ func CheckTx(runTx sdk.RunTx, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, 
 		} else {
 			return &abci.ResponseCheckTx{Code: 1, Log: "leanval: bad membership tx"}, nil
 		}
-		return &abci.ResponseCheckTx{Code: 0, GasWanted: 21000}, nil
+		return &abci.ResponseCheckTx{Code: 0, GasWanted: 0}, nil
 	}
 	gInfo, result, anteEvents, err := runTx(req.Tx, nil)
 	if err != nil {
