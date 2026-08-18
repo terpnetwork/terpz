@@ -37,8 +37,8 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 		for _, tx := range req.Txs {
 			k.NoteMembershipTx(tx)
 		}
-		txs = mergeMembershipFromComet(req.Txs, txs)
-		txs = mergeMembershipFromComet(k.PendingMembershipTxs(), txs)
+		// JOIN is admitted via LNPR subjects (ApplyLNPR), not as extra Finalize txs
+		// (MembershipTx GetMsgs is empty and fails Deliver).
 		lnpr := k.buildLNPR(period)
 		txs = injectLNPR(txs, lnpr)
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
