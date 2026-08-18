@@ -124,6 +124,9 @@ func (k *Keeper) dropUnlisted(period uint64, listed map[string]struct{}) {
 	k.store.IteratePrefix(pref, func(key, _ []byte) bool {
 		subj := key[len(pref):]
 		if _, ok := listed[string(subj)]; !ok {
+			if k.store.Get(types.PendingJoinKey(period, subj)) != nil || k.store.Get(types.PendingJoinKey(0, subj)) != nil {
+				return true
+			}
 			del = append(del, append([]byte(nil), key...))
 		}
 		return true

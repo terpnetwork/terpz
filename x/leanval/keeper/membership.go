@@ -19,6 +19,7 @@ func (k *Keeper) ApplyJoin(b types.JoinBlob) error {
 	if err := types.ValidateJoin(b); err != nil {
 		return err
 	}
+	k.store.Set(types.PendingJoinKey(b.Period, b.Subject), types.PutI64(b.Weight))
 	k.AcceptProof(b.Period, b.Subject, b.Weight)
 	return nil
 }
@@ -28,6 +29,7 @@ func (k *Keeper) ApplyLeave(b types.LeaveBlob) error {
 	if err := types.ValidateLeave(b); err != nil {
 		return err
 	}
+	k.store.Set(types.PendingLeaveKey(b.Period, b.Subject), []byte{1})
 	k.store.Delete(types.BondedKey(b.Period, b.Subject))
 	return nil
 }
@@ -84,6 +86,26 @@ func (k *Keeper) ClearPendingMembership() {
 func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []SubjectPower {
 	leave := map[string]struct{}{}
 	var joins []SubjectPower
+	k.store.IteratePrefix(types.PendingLeavePrefixForPeriod(period), func(key, _ []byte) bool {
+		pref := types.PendingLeavePrefixForPeriod(period)
+		leave[string(key[len(pref):])] = struct{}{}
+		return true
+	})
+	k.store.IteratePrefix(types.PendingJoinPrefixForPeriod(period), func(key, value []byte) bool {
+		pref := types.PendingJoinPrefixForPeriod(period)
+		subj := key[len(pref):]
+		joins = append(joins, SubjectPower{Subject: append([]byte(nil), subj...), Weight: types.GetI64(value), HasProof: true})
+		return true
+	})
+	// period 0 JOIN is also valid for the live period (e2e encodes period_of(height)).
+	if period != 0 {
+		k.store.IteratePrefix(types.PendingJoinPrefixForPeriod(0), func(key, value []byte) bool {
+			pref := types.PendingJoinPrefixForPeriod(0)
+			subj := key[len(pref):]
+			joins = append(joins, SubjectPower{Subject: append([]byte(nil), subj...), Weight: types.GetI64(value), HasProof: true})
+			return true
+		})
+	}
 	for _, tx := range k.PendingMembershipTxs() {
 		if l, ok := types.DecodeLeave(tx); ok {
 			leave[string(l.Subject)] = struct{}{}

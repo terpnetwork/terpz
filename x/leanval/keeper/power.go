@@ -231,6 +231,8 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 	for _, s := range blob.Subjects {
 		k.AcceptProof(blob.Period, s.Subject, s.Weight)
 		listed[string(s.Subject)] = struct{}{}
+		k.store.Delete(types.PendingJoinKey(blob.Period, s.Subject))
+		k.store.Delete(types.PendingJoinKey(0, s.Subject))
 	}
 	k.dropUnlisted(blob.Period, listed)
 	return nil

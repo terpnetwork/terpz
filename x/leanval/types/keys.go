@@ -19,6 +19,10 @@ const (
 	// ObjectRootsPrefix: last committed deposit||bitfield||EB roots (32*3).
 	// VerifyLNPR binds Dummy instances to this store value, not the tx.
 	ObjectRootsPrefix byte = 0x04
+	// PendingJoinPrefix: period(8) | subject → weight. Survives LNPR replace-set.
+	PendingJoinPrefix byte = 0x05
+	// PendingLeavePrefix: period(8) | subject.
+	PendingLeavePrefix byte = 0x06
 )
 
 // ObjectRootsSize is deposit(32) || bitfield(32) || eb(32).
@@ -42,6 +46,36 @@ func TestLeanVerifierAcc() []byte { return make([]byte, 20) }
 func OwnsValsetKey() []byte { return []byte{OwnsValsetPrefix} }
 
 func ObjectRootsKey() []byte { return []byte{ObjectRootsPrefix} }
+
+func PendingJoinKey(period uint64, subject []byte) []byte {
+	k := make([]byte, 1+8+len(subject))
+	k[0] = PendingJoinPrefix
+	putU64(k[1:9], period)
+	copy(k[9:], subject)
+	return k
+}
+
+func PendingJoinPrefixForPeriod(period uint64) []byte {
+	k := make([]byte, 1+8)
+	k[0] = PendingJoinPrefix
+	putU64(k[1:9], period)
+	return k
+}
+
+func PendingLeaveKey(period uint64, subject []byte) []byte {
+	k := make([]byte, 1+8+len(subject))
+	k[0] = PendingLeavePrefix
+	putU64(k[1:9], period)
+	copy(k[9:], subject)
+	return k
+}
+
+func PendingLeavePrefixForPeriod(period uint64) []byte {
+	k := make([]byte, 1+8)
+	k[0] = PendingLeavePrefix
+	putU64(k[1:9], period)
+	return k
+}
 
 func PeriodFromHeight(height int64) uint64 {
 	if height < 0 {

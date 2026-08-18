@@ -121,3 +121,32 @@ func TestProcessMembershipAfterLNPRKeepsJoin(t *testing.T) {
 		t.Fatalf("join after LNPR replace-set must survive: %+v", set)
 	}
 }
+
+func TestStorePendingJoinSurvivesLNPRReplace(t *testing.T) {
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AllowDummy = true
+	k.AcceptProof(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10)
+	join := []byte("joiner-ed25519-key-32bytesxxxxx")
+	if err := k.ApplyJoin(types.JoinBlob{Period: 0, Subject: join, Weight: 8}); err != nil {
+		t.Fatal(err)
+	}
+	k.ClearPendingMembership() // RAM gone; store pending must remain
+	raw := k.buildLNPR(0)
+	dec, ok := types.DecodeLNPR(raw)
+	if !ok {
+		t.Fatal("lnpr")
+	}
+	if len(dec.Subjects) != 2 {
+		t.Fatalf("subjects=%d want 2 after store pending", len(dec.Subjects))
+	}
+	// LNPR of genesis only must not wipe the pending join row
+	if err := k.ApplyLNPR(types.LNPRBlob{Period: 0, Subjects: []types.SubjectProof{{
+		Subject: []byte("genesis-ed25519-key-32bytesxxxx"), Weight: 10,
+		Proof: DummyStwoProveBoundRoots(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10, nil),
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(k.QueryBondedSet(0)); n != 2 {
+		t.Fatalf("BondedSet=%d want 2 (pending join survives dropUnlisted)", n)
+	}
+}
