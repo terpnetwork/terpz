@@ -34,7 +34,11 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 			txs = append([][]byte(nil), req.Txs...)
 		}
 		period := types.PeriodFromHeight(req.Height)
+		for _, tx := range req.Txs {
+			k.NoteMembershipTx(tx)
+		}
 		txs = mergeMembershipFromComet(req.Txs, txs)
+		txs = mergeMembershipFromComet(k.PendingMembershipTxs(), txs)
 		lnpr := k.buildLNPR(period)
 		txs = injectLNPR(txs, lnpr)
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
