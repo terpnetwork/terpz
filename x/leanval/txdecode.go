@@ -5,6 +5,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
+	"github.com/terpnetwork/terp-core/v6/x/leanval/keeper"
 	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
@@ -27,6 +28,7 @@ func WrapTxDecoder(inner sdk.TxDecoder) sdk.TxDecoder {
 			} else {
 				return nil, types.ErrMempoolLNPR
 			}
+			keeper.NoteMembershipBytes(txBytes)
 			return types.MembershipTx{Raw: append([]byte(nil), txBytes...)}, nil
 		}
 		return inner(txBytes)
@@ -61,6 +63,7 @@ func CheckTx(runTx sdk.RunTx, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, 
 		} else {
 			return &abci.ResponseCheckTx{Code: 1, Log: "leanval: bad membership tx"}, nil
 		}
+		keeper.NoteMembershipBytes(req.Tx)
 		return &abci.ResponseCheckTx{Code: 0, GasWanted: 0}, nil
 	}
 	gInfo, result, anteEvents, err := runTx(req.Tx, nil)

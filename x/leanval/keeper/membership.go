@@ -113,7 +113,7 @@ func (k *Keeper) ProcessMembershipTxs(txs [][]byte) error {
 }
 
 // NoteMembershipTx records JOIN/LEAV for the next LNPR. Not Comet admission.
-func (k *Keeper) NoteMembershipTx(tx []byte) {
+func NoteMembershipBytes(tx []byte) {
 	if !types.IsMembershipTx(tx) {
 		return
 	}
@@ -127,6 +127,10 @@ func (k *Keeper) NoteMembershipTx(tx []byte) {
 	}
 	membershipQ.txs = append(membershipQ.txs, append([]byte(nil), tx...))
 	persistMembershipFile(tx)
+}
+
+func (k *Keeper) NoteMembershipTx(tx []byte) {
+	NoteMembershipBytes(tx)
 }
 
 func (k *Keeper) PendingMembershipTxs() [][]byte {
