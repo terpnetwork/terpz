@@ -166,9 +166,13 @@ func foldPairStrings(period uint64, subjects []types.SubjectProof, roots []byte)
 	}
 }
 
+func isFoldProof(proof []byte) bool {
+	return len(proof) >= 10 && bytes.Equal(proof[:4], []byte("STWO")) && bytes.Equal(proof[6:10], []byte("FOLD"))
+}
+
 func foldProofFromLNPR(blob types.LNPRBlob) []byte {
 	for _, s := range blob.Subjects {
-		if len(s.Proof) >= 10 && bytes.Equal(s.Proof[:4], []byte("STWO")) && bytes.Equal(s.Proof[6:10], []byte("FOLD")) {
+		if isFoldProof(s.Proof) {
 			return s.Proof
 		}
 	}

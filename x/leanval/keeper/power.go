@@ -215,16 +215,38 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 		return nil
 	}
 	roots := k.LastObjectRoots()
-	if fold := foldProofFromLNPR(blob); fold != nil {
+	fold := foldProofFromLNPR(blob)
+	if fold != nil {
 		if len(fold) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
-		return VerifySameStatementFold(fold, foldPairStrings(blob.Period, blob.Subjects, roots))
-	}
-	if !k.AllowDummy {
+		if err := VerifySameStatementFold(fold, foldPairStrings(blob.Period, blob.Subjects, roots)); err != nil {
+			return err
+		}
+	} else if !k.AllowDummy {
 		return errProof("STWO FOLD required (bitfield root, not Dummy-N)")
 	}
+
+	known := k.knownSubjectSet(blob.Period)
 	for i, s := range blob.Subjects {
+		_, inRoster := known[string(s.Subject)]
+		extra := !inRoster && s.Weight > 0
+		if extra {
+			// Fold of current object roots does not prove JOIN subjects.
+			if len(s.Proof) == 0 || isFoldProof(s.Proof) {
+				return errProof("unprovable extra subject")
+			}
+			if len(s.Proof) > types.MaxProofBytes {
+				return errProof("proof too large")
+			}
+			if err := k.verifySubjectProof(blob.Period, uint64(i), s, roots); err != nil {
+				return err
+			}
+			continue
+		}
+		if fold != nil {
+			continue
+		}
 		if len(s.Proof) > types.MaxProofBytes {
 			return errProof("proof too large")
 		}
@@ -233,6 +255,18 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 		}
 	}
 	return nil
+}
+
+func (k *Keeper) knownSubjectSet(period uint64) map[string]struct{} {
+	set := k.DebugSubjectsFromBits()
+	if len(set) == 0 {
+		set = k.BondedSetOrCarry(period)
+	}
+	out := make(map[string]struct{}, len(set))
+	for _, s := range set {
+		out[string(s.Subject)] = struct{}{}
+	}
+	return out
 }
 
 func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {

@@ -93,14 +93,19 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 	return k.VerifyLNPR(blob)
 }
 
-// buildLNPR encodes Dummy proofs for the committed BondedSet only.
-// Disk lean-pending.json / LEANVAL_PENDING is not admission: two honest
-// replicas with the same app hash must propose the same set.
+// buildLNPR encodes the roster this block certifies: committed bits plus
+// queued JOIN/LEAV subjects. Pending files stay on the LNPR even if the
+// resulting blob will fail Verify — Process REJECT is a stall, not a cue
+// to propose genesis-only and look like progress.
 func (k *Keeper) buildLNPR(period uint64) []byte {
 	k.syncObjectRoots()
 	set := k.DebugSubjectsFromBits()
 	if len(set) == 0 {
 		set = k.BondedSetOrCarry(period)
+	}
+	known := make(map[string]struct{}, len(set))
+	for _, s := range set {
+		known[string(s.Subject)] = struct{}{}
 	}
 	set = k.applyQueuedMembership(period, set)
 	subs := make([]types.SubjectProof, 0, len(set))
@@ -110,15 +115,24 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 	roots := k.LastObjectRoots()
 	pairs := foldPairStrings(period, subs, roots)
 	if fold, err := ProveSameStatementFold(pairs); err == nil && len(fold) > 0 {
+		idx := 0
+		for i, s := range subs {
+			if _, ok := known[string(s.Subject)]; ok {
+				idx = i
+				break
+			}
+		}
 		if len(subs) == 0 {
 			subs = []types.SubjectProof{{Subject: types.DepositIndexBytes(0), Weight: 0, Proof: fold}}
 		} else {
-			subs[0].Proof = fold
+			subs[idx].Proof = fold
 		}
-		return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 	}
 	if k.AllowDummy {
 		for i := range subs {
+			if isFoldProof(subs[i].Proof) {
+				continue
+			}
 			subs[i].Proof = DummyStwoProveBoundRoots(period, subs[i].Subject, subs[i].Weight, roots)
 		}
 	}
