@@ -15,7 +15,22 @@ func (k *Keeper) SDKWrapPrepare(inner sdk.PrepareProposalHandler) sdk.PreparePro
 				return inner(ctx, r)
 			}
 		}
-		return k.WrapPrepareProposal(p)(req)
+		resp, err := k.WrapPrepareProposal(p)(req)
+		pending := len(k.PendingMembershipTxs())
+		subj := 0
+		if resp != nil {
+			if blob, _, ok := FindLNPR(resp.Txs); ok {
+				subj = len(blob.Subjects)
+			}
+		}
+		nreq := 0
+		h := int64(0)
+		if req != nil {
+			nreq = len(req.Txs)
+			h = req.Height
+		}
+		ctx.Logger().Error("leanval: prepare", "h", h, "pending", pending, "lnpr_subjects", subj, "req_txs", nreq)
+		return resp, err
 	}
 }
 

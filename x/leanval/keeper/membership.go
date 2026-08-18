@@ -17,6 +17,9 @@ func membershipDir() string {
 	if d := os.Getenv("LEANVAL_MEMBERSHIP_DIR"); d != "" {
 		return d
 	}
+	if st, err := os.Stat("/terpd"); err == nil && st.IsDir() {
+		return "/terpd/lean-join"
+	}
 	return filepath.Join(os.TempDir(), "terp-leanval-membership")
 }
 
