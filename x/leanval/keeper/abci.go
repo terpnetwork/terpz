@@ -82,6 +82,7 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 	if len(set) == 0 {
 		set = k.BondedSetOrCarry(period)
 	}
+	set = k.applyQueuedMembership(period, set)
 	subs := make([]types.SubjectProof, 0, len(set))
 	for _, s := range set {
 		subs = append(subs, types.SubjectProof{Subject: s.Subject, Weight: s.Weight})

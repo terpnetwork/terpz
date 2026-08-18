@@ -37,8 +37,13 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 	}
 	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
 	k.ClearPendingMembership()
-	if leanValsetAirBin() != "" || foldBin() != "" {
+	if leanValsetAirBin() != "" {
 		k.AllowDummy = false
+	}
+	if foldBin() != "" {
+		if _, err := ProveSameStatementFold(foldPairStrings(0, nil, nil)); err == nil {
+			k.AllowDummy = false
+		}
 	}
 	return k
 }

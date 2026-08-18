@@ -21,6 +21,7 @@ func (k *Keeper) InitGenesis(gs types.GenesisState) {
 			k.PutSubject(0, s.PubKey, 0)
 		}
 	}
+	k.syncObjectRoots()
 }
 
 func (k *Keeper) ExportGenesis() types.GenesisState {
