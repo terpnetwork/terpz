@@ -54,6 +54,7 @@ func processStatus(t *testing.T, k *Keeper, height int64, txs [][]byte) abci.Res
 	if resp == nil {
 		t.Fatal("nil Process response")
 	}
+	t.Logf("Process %s height=%d txs=%d", resp.Status.String(), height, len(txs))
 	return resp.Status
 }
 
@@ -220,12 +221,13 @@ func TestJoinHonestLNPRProcessAcceptBitsGrow(t *testing.T) {
 	if len(blob.Subjects) < 4 {
 		t.Fatalf("honest JOIN LNPR subjects=%d want >=4", len(blob.Subjects))
 	}
-	if processStatus(t, replica, 4, resp.Txs) != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatal("verifiable JOIN LNPR must ACCEPT")
+	if st := processStatus(t, replica, 4, resp.Txs); st != abci.ResponseProcessProposal_ACCEPT {
+		t.Fatalf("verifiable JOIN LNPR must ACCEPT, got %s", st)
 	}
-	if processStatus(t, proposer, 4, resp.Txs) != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatal("proposer Process of honest JOIN LNPR must ACCEPT")
+	if st := processStatus(t, proposer, 4, resp.Txs); st != abci.ResponseProcessProposal_ACCEPT {
+		t.Fatalf("proposer Process of honest JOIN LNPR must ACCEPT, got %s", st)
 	}
+	t.Logf("honest JOIN LNPR ACCEPT subjects=%d", len(blob.Subjects))
 	if err := proposer.ProcessInjectedLNPR(resp.Txs); err != nil {
 		t.Fatalf("proposer ApplyLNPR: %v", err)
 	}

@@ -66,11 +66,20 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 func (k *Keeper) WrapProcessProposal(inner ProcessHandler) ProcessHandler {
 	return func(req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		if err := k.checkLNPR(req.Height, req.Txs); err != nil {
+			fmt.Fprintf(os.Stderr, "leanval: Process REJECT on unverifiable LNPR: %v\n", err)
 			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 		}
 		if inner != nil {
-			return inner(req)
+			resp, err := inner(req)
+			if err != nil {
+				return resp, err
+			}
+			if resp != nil && resp.Status == abci.ResponseProcessProposal_ACCEPT {
+				fmt.Fprintf(os.Stderr, "leanval: Process ACCEPT\n")
+			}
+			return resp, nil
 		}
+		fmt.Fprintf(os.Stderr, "leanval: Process ACCEPT\n")
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 	}
 }
