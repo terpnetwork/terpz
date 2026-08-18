@@ -1,8 +1,10 @@
 package keeper
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
@@ -67,8 +69,10 @@ func (k *Keeper) WrapProcessProposal(inner ProcessHandler) ProcessHandler {
 	return func(req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		if err := k.checkLNPR(req.Height, req.Txs); err != nil {
 			fmt.Fprintf(os.Stderr, "leanval: Process REJECT on unverifiable LNPR: %v\n", err)
+			writeLastProcess("REJECT", err.Error(), req.Height, req.Txs)
 			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 		}
+		writeLastProcess("ACCEPT", "", req.Height, req.Txs)
 		if inner != nil {
 			resp, err := inner(req)
 			if err != nil {
@@ -138,8 +142,8 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 		}
 	}
 	// JOIN extras stay on the roster even if Dummy is closed (unverifiable).
-	// Fold of current object roots does not prove them. Dummy extras only
-	// when AllowDummy — do not hide a stall with genesis-only.
+	// Fold of current object roots does not prove them. Dummy extras bind
+	// store-sourced roots (waist). Do not hide a stall with genesis-only.
 	if k.AllowDummy {
 		for i := range subs {
 			if isFoldProof(subs[i].Proof) {
@@ -219,4 +223,38 @@ func (k *Keeper) ProcessInjectedLNPR(txs [][]byte) error {
 		return nil
 	}
 	return k.ApplyLNPR(blob)
+}
+
+type lastProcessFile struct {
+	Status       string `json:"status"`
+	Err          string `json:"err,omitempty"`
+	Height       int64  `json:"height"`
+	LNPRSubjects int    `json:"lnpr_subjects"`
+	DummyExtras  int    `json:"dummy_extras"`
+}
+
+func writeLastProcess(status, errMsg string, height int64, txs [][]byte) {
+	dir := membershipDir()
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	blob, _, ok := FindLNPR(txs)
+	nsubj, extras := 0, 0
+	if ok {
+		nsubj = len(blob.Subjects)
+		for _, s := range blob.Subjects {
+			if s.Weight > 0 && len(s.Proof) > 0 && !isFoldProof(s.Proof) {
+				extras++
+			}
+		}
+	}
+	rec := lastProcessFile{Status: status, Err: errMsg, Height: height, LNPRSubjects: nsubj, DummyExtras: extras}
+	bz, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "last-process"), append(bz, '\n'), 0o644)
 }

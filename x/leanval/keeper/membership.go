@@ -51,7 +51,7 @@ func loadMembershipFiles() [][]byte {
 	}
 	var out [][]byte
 	for _, e := range ents {
-		if e.IsDir() || e.Name() == "last-prepare" {
+		if e.IsDir() || e.Name() == "last-prepare" || e.Name() == "last-process" {
 			continue
 		}
 		bz, err := os.ReadFile(filepath.Join(membershipDir(), e.Name()))
