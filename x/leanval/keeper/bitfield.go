@@ -103,6 +103,7 @@ func (k *Keeper) AllocateIndex(subject []byte) uint32 {
 	n := k.nextDepositIndex()
 	k.store.Set(types.DepositIndexKey(subject), types.DepositIndexBytes(n))
 	k.setNextDepositIndex(n + 1)
+	k.syncObjectRoots()
 	return n
 }
 
@@ -118,6 +119,7 @@ func ebFromWeight(w int64) byte {
 
 func (k *Keeper) SetEB(idx uint32, eb byte) {
 	k.store.Set(types.EBKey(idx), []byte{eb})
+	k.syncObjectRoots()
 }
 
 func (k *Keeper) EBOf(idx uint32) byte {
@@ -145,27 +147,16 @@ func sha256Root(b []byte) [32]byte {
 }
 
 func (k *Keeper) BitfieldRoot() [32]byte {
-	return sha256Root(k.store.Get(types.BitfieldKey()))
+	// Commitment to bitfield bytes only — not SHA256 of another map's concat.
+	return sha256Root(k.Bitfield())
 }
 
 func (k *Keeper) DepositTreeRoot() [32]byte {
-	var acc []byte
-	k.store.IteratePrefix([]byte{types.DepositIndexPrefix}, func(key, value []byte) bool {
-		acc = append(acc, key[1:]...)
-		acc = append(acc, value...)
-		return true
-	})
-	return sha256Root(acc)
+	return merkleRoot(k.depositLeaves())
 }
 
 func (k *Keeper) EBTreeRoot() [32]byte {
-	var acc []byte
-	k.store.IteratePrefix([]byte{types.EBPrefix}, func(key, value []byte) bool {
-		acc = append(acc, key[1:]...)
-		acc = append(acc, value...)
-		return true
-	})
-	return sha256Root(acc)
+	return merkleRoot(k.ebLeaves())
 }
 
 func (k *Keeper) syncObjectRoots() {
