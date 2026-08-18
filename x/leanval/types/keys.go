@@ -23,6 +23,14 @@ const (
 	PendingJoinPrefix byte = 0x05
 	// PendingLeavePrefix: period(8) | subject.
 	PendingLeavePrefix byte = 0x06
+	// BitfieldPrefix: participation bits (OR-merge). SOURCES.md Phase 1B.
+	BitfieldPrefix byte = 0x10
+	// DepositIndexPrefix: subject -> 5-byte deposit-tree index. SOURCES.md Phase 1A.
+	DepositIndexPrefix byte = 0x11
+	// NextDepositIndexPrefix: u32 next index to allocate on JOIN.
+	NextDepositIndexPrefix byte = 0x12
+	// EBPrefix: deposit index -> 1-byte effective balance (separate tree). SOURCES 1B.
+	EBPrefix byte = 0x13
 )
 
 // ObjectRootsSize is deposit(32) || bitfield(32) || eb(32).
@@ -68,6 +76,43 @@ func PendingLeaveKey(period uint64, subject []byte) []byte {
 	putU64(k[1:9], period)
 	copy(k[9:], subject)
 	return k
+}
+
+func BitfieldKey() []byte { return []byte{BitfieldPrefix} }
+
+func NextDepositIndexKey() []byte { return []byte{NextDepositIndexPrefix} }
+
+func DepositIndexKey(subject []byte) []byte {
+	k := make([]byte, 1+len(subject))
+	k[0] = DepositIndexPrefix
+	copy(k[1:], subject)
+	return k
+}
+
+func EBKey(index uint32) []byte {
+	k := make([]byte, 1+4)
+	k[0] = EBPrefix
+	k[1] = byte(index >> 24)
+	k[2] = byte(index >> 16)
+	k[3] = byte(index >> 8)
+	k[4] = byte(index)
+	return k
+}
+
+func PutU32(v uint32) []byte {
+	return []byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}
+}
+
+func GetU32(src []byte) uint32 {
+	if len(src) < 4 {
+		return 0
+	}
+	return uint32(src[0])<<24 | uint32(src[1])<<16 | uint32(src[2])<<8 | uint32(src[3])
+}
+
+func DepositIndexBytes(index uint32) []byte {
+	// ~5 bytes: 1 reserved + u32 (SOURCES 1A: deposit-tree INDEX not 32-byte subject).
+	return append([]byte{0}, PutU32(index)...)
 }
 
 func PendingLeavePrefixForPeriod(period uint64) []byte {
