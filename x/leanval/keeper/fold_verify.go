@@ -55,6 +55,12 @@ func VerifySameStatementFold(proof []byte, pairs []string) error {
 		if !bytes.Equal(proof[10:42], want) {
 			return fmt.Errorf("leanval: fold public inputs != bitfield root")
 		}
+		if len(pairs) > 1 && isHexRoot(pairs[1]) && !bytes.Equal(proof[42:74], parseRootHex(pairs[1])) {
+			return fmt.Errorf("leanval: fold public inputs != deposit root")
+		}
+		if len(pairs) > 2 && isHexRoot(pairs[2]) && !bytes.Equal(proof[74:106], parseRootHex(pairs[2])) {
+			return fmt.Errorf("leanval: fold public inputs != EB root")
+		}
 	}
 	bin := foldBin()
 	if bin == "" {

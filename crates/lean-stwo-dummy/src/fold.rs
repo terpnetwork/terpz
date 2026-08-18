@@ -1,6 +1,6 @@
-//! Same-statement fold (RESEARCH-PACK Phase 1B / Jiang): public inputs are
-//! bitfield root + deposit root + EB root. Not N Dummy (a,b) pairs and not
-//! c=3a+5b+7 over a subject roster.
+//! Same-statement fold: public inputs are the 96-byte object roots
+//! (bitfield || deposit || EB). Trace limbs reconstruct those roots;
+//! the same bytes are mixed into Fiat-Shamir. Not Dummy-N / DSTW.
 
 use itertools::Itertools;
 use num_traits::Zero;
@@ -23,25 +23,39 @@ use stwo_constraint_framework::{
     TraceLocationAllocator,
 };
 
-use crate::{
-    dummy_m31_hash, CIRCUIT_TYPE_STWO, CURVE_TYPE_M31, M31, M31_P, MAX_PROOF_BYTES, STWO_MAGIC,
-    VerifyError,
-};
+use crate::{CIRCUIT_TYPE_STWO, CURVE_TYPE_M31, MAX_PROOF_BYTES, STWO_MAGIC, VerifyError};
 
 /// Wire kind: same-statement fold over object roots.
 pub const FOLD_KIND: &[u8; 4] = b"FOLD";
 
 pub const ROOT_LEN: usize = 32;
 pub const OBJECT_ROOTS_LEN: usize = ROOT_LEN * 3;
+/// Three bytes per M31 limb (24-bit, uniquely reconstructs the 96-byte PI).
+pub const LIMB_BYTES: usize = 3;
+pub const N_LIMBS: usize = OBJECT_ROOTS_LEN / LIMB_BYTES;
 
-type HashComponent = FrameworkComponent<HashEval>;
+type FoldComponent = FrameworkComponent<FoldEval>;
 
-#[derive(Clone)]
-struct HashEval {
-    log_n_rows: u32,
+/// Pack 96 root bytes into 32 M31 limbs (LE 24-bit groups).
+pub fn pack_root_limbs(roots: &[u8; OBJECT_ROOTS_LEN]) -> [u32; N_LIMBS] {
+    let mut out = [0u32; N_LIMBS];
+    for (i, limb) in out.iter_mut().enumerate() {
+        let o = i * LIMB_BYTES;
+        *limb = u32::from(roots[o])
+            | (u32::from(roots[o + 1]) << 8)
+            | (u32::from(roots[o + 2]) << 16);
+    }
+    out
 }
 
-impl FrameworkEval for HashEval {
+#[derive(Clone)]
+struct FoldEval {
+    log_n_rows: u32,
+    /// Expected 24-bit limbs of bitfield||deposit||EB (public).
+    limbs: [u32; N_LIMBS],
+}
+
+impl FrameworkEval for FoldEval {
     fn log_size(&self) -> u32 {
         self.log_n_rows
     }
@@ -51,40 +65,22 @@ impl FrameworkEval for HashEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let a = eval.next_trace_mask();
-        let b = eval.next_trace_mask();
-        let c = eval.next_trace_mask();
-        let three = E::F::from(BaseField::from_u32_unchecked(3));
-        let five = E::F::from(BaseField::from_u32_unchecked(5));
-        let seven = E::F::from(BaseField::from_u32_unchecked(7));
-        eval.add_constraint(c - a * three - b * five - seven);
+        // limb_i - pack3(roots[3i..3i+3]) = 0  (trace reconstructs FS-mixed roots)
+        for expected in self.limbs {
+            let col = eval.next_trace_mask();
+            let want = E::F::from(BaseField::from_u32_unchecked(expected));
+            eval.add_constraint(col - want);
+        }
         eval
     }
 }
 
 const LOG_N_ROWS: u32 = LOG_N_LANES;
 
-/// Fold 32 bytes into one M31 (not a cryptographic hash; PI bind only).
-pub fn root_m31(root: &[u8; ROOT_LEN]) -> M31 {
-    let mut acc: u64 = 0;
-    for chunk in root.chunks_exact(4) {
-        let v = u32::from_le_bytes(chunk.try_into().unwrap()) as u64;
-        acc = (acc.wrapping_mul(251).wrapping_add(v)) % (M31_P as u64);
-    }
-    M31(acc as u32)
-}
-
-/// Mix deposit||eb so the dummy AIR still has two seeds + claimed hash.
-fn seeds(bitfield: &[u8; 32], deposit: &[u8; 32], eb: &[u8; 32]) -> (M31, M31, M31) {
-    let a = root_m31(bitfield);
-    let b = M31(((root_m31(deposit).0 as u64 * 17 + root_m31(eb).0 as u64) % (M31_P as u64)) as u32);
-    let c = dummy_m31_hash(a, b);
-    (a, b, c)
-}
-
-fn log_sizes() -> stwo::core::pcs::TreeVec<Vec<u32>> {
-    let info = HashEval {
+fn log_sizes(limbs: [u32; N_LIMBS]) -> stwo::core::pcs::TreeVec<Vec<u32>> {
+    let info = FoldEval {
         log_n_rows: LOG_N_ROWS,
+        limbs,
     }
     .evaluate(InfoEvaluator::empty());
     let mut sizes = info.mask_offsets.as_cols_ref().map_cols(|_| LOG_N_ROWS);
@@ -93,23 +89,15 @@ fn log_sizes() -> stwo::core::pcs::TreeVec<Vec<u32>> {
 }
 
 fn gen_trace(
-    a: M31,
-    b: M31,
-    c: M31,
+    limbs: [u32; N_LIMBS],
 ) -> Vec<CircleEvaluation<SimdBackend, StwoM31, BitReversedOrder>> {
     let n = 1usize << LOG_N_ROWS;
     let domain = CanonicCoset::new(LOG_N_ROWS).circle_domain();
-    let z = StwoM31::from_u32_unchecked(0);
-    let pad_c = StwoM31::from_u32_unchecked(dummy_m31_hash(M31(0), M31(0)).0);
-    let mut col_a = vec![z; n];
-    let mut col_b = vec![z; n];
-    let mut col_c = vec![pad_c; n];
-    col_a[0] = StwoM31::from_u32_unchecked(a.0);
-    col_b[0] = StwoM31::from_u32_unchecked(b.0);
-    col_c[0] = StwoM31::from_u32_unchecked(c.0);
-    [col_a, col_b, col_c]
+    limbs
         .into_iter()
-        .map(|col| {
+        .map(|v| {
+            let cell = StwoM31::from_u32_unchecked(v);
+            let col = vec![cell; n];
             CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
                 domain,
                 BaseColumn::from_iter(col),
@@ -118,15 +106,12 @@ fn gen_trace(
         .collect_vec()
 }
 
-fn mix_public(channel: &mut Blake2sChannel, roots: &[u8; OBJECT_ROOTS_LEN], a: M31, b: M31, c: M31) {
+fn mix_public(channel: &mut Blake2sChannel, roots: &[u8; OBJECT_ROOTS_LEN]) {
     for chunk in roots.chunks_exact(8) {
         let mut buf = [0u8; 8];
         buf.copy_from_slice(chunk);
         channel.mix_u64(u64::from_le_bytes(buf));
     }
-    channel.mix_u64(a.0 as u64);
-    channel.mix_u64(b.0 as u64);
-    channel.mix_u64(c.0 as u64);
 }
 
 fn header(roots: &[u8; OBJECT_ROOTS_LEN]) -> Vec<u8> {
@@ -178,7 +163,7 @@ pub fn prove_fold(bitfield: [u8; 32], deposit: [u8; 32], eb: [u8; 32]) -> Result
     roots[..32].copy_from_slice(&bitfield);
     roots[32..64].copy_from_slice(&deposit);
     roots[64..96].copy_from_slice(&eb);
-    let (a, b, c) = seeds(&bitfield, &deposit, &eb);
+    let limbs = pack_root_limbs(&roots);
     let config = PcsConfig::default();
     let twiddles = SimdBackend::precompute_twiddles(
         CanonicCoset::new(LOG_N_ROWS + config.fri_config.log_blowup_factor + 1)
@@ -192,15 +177,16 @@ pub fn prove_fold(bitfield: [u8; 32], deposit: [u8; 32], eb: [u8; 32]) -> Result
 
     let tree_builder = commitment_scheme.tree_builder();
     tree_builder.commit(channel);
-    mix_public(channel, &roots, a, b, c);
+    mix_public(channel, &roots);
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(gen_trace(a, b, c));
+    tree_builder.extend_evals(gen_trace(limbs));
     tree_builder.commit(channel);
 
-    let component = HashComponent::new(
+    let component = FoldComponent::new(
         &mut TraceLocationAllocator::default(),
-        HashEval {
+        FoldEval {
             log_n_rows: LOG_N_ROWS,
+            limbs,
         },
         QM31::zero(),
     );
@@ -226,7 +212,7 @@ pub fn verify_fold(
     if got[..32] != bitfield || got[32..64] != deposit || got[64..96] != eb {
         return Err(VerifyError::PublicInputMismatch);
     }
-    let (a, b, c) = seeds(&bitfield, &deposit, &eb);
+    let limbs = pack_root_limbs(&got);
     let stark_proof: StarkProof<Blake2sMerkleHasher> =
         bincode::deserialize(&proof[hdr..]).map_err(|_| VerifyError::StwoVerify)?;
 
@@ -234,15 +220,16 @@ pub fn verify_fold(
     let channel = &mut Blake2sChannel::default();
     pcs_config.mix_into(channel);
     let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(pcs_config);
-    let sizes = log_sizes();
+    let sizes = log_sizes(limbs);
     commitment_scheme.commit(stark_proof.commitments[0], &sizes[0], channel);
-    mix_public(channel, &got, a, b, c);
+    mix_public(channel, &got);
     commitment_scheme.commit(stark_proof.commitments[1], &sizes[1], channel);
 
-    let component = HashComponent::new(
+    let component = FoldComponent::new(
         &mut TraceLocationAllocator::default(),
-        HashEval {
+        FoldEval {
             log_n_rows: LOG_N_ROWS,
+            limbs,
         },
         QM31::zero(),
     );

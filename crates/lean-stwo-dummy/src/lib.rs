@@ -566,4 +566,16 @@ mod tests {
         proof[i] ^= 1;
         assert!(crate::verify_fold(&proof, bf, dep, eb).is_err());
     }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_fold_air_not_dummy_hash() {
+        let src = include_str!("fold.rs");
+        assert!(!src.contains("dummy_m31_hash"), "fold AIR must not call dummy_m31_hash");
+        assert!(
+            !src.contains("from_u32_unchecked(3)") || !src.contains("from_u32_unchecked(5)"),
+            "fold AIR must not be c=3a+5b+7"
+        );
+        assert!(src.contains("col - want"), "expected limb reconstruction constraint");
+    }
 }
