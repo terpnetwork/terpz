@@ -498,6 +498,8 @@ func NewTerpApp(
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetAnteHandler(leanval.WrapAnte(anteHandler))
 	app.SetCheckTxHandler(leanval.NewCheckTx(app.LeanvalKeeper))
+	app.SetInsertTxHandler(leanval.NewInsertTx(app.LeanvalKeeper))
+	app.SetReapTxsHandler(leanval.NewReapTxs(app.LeanvalKeeper))
 	app.setPostHandler()
 	app.SetEndBlocker(app.EndBlocker)
 	app.SetPrecommiter(app.Precommitter)
