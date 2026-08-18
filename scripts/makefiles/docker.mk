@@ -139,6 +139,11 @@ docker-build: _docker-stage
 docker-build-distroless: docker-build
 
 docker-build-alpine: _docker-stage
+	@mkdir -p build
+	@MUSL_FOLD=crates/lean-stwo-dummy/target-musl/aarch64-unknown-linux-musl/release/lean-stwo-fold; \
+	if [ -x "$$MUSL_FOLD" ]; then cp "$$MUSL_FOLD" build/lean-stwo-fold; \
+	elif [ -x build/lean-stwo-fold ]; then :; \
+	else echo "ERROR: musl lean-stwo-fold missing (build it or place at build/lean-stwo-fold)"; exit 1; fi
 	@DOCKER_BUILDKIT=1 docker build \
 		-t terpnetwork/terp-core:local-alpine \
 		--target runtime \

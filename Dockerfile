@@ -115,7 +115,8 @@ FROM ${RUNNER_IMAGE} AS runtime
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=go-builder /code/build/terpz /usr/local/bin/terpz
-RUN ln -sf /usr/local/bin/terpz /usr/local/bin/terpd
+COPY --from=go-builder /code/build/lean-stwo-fold /usr/local/bin/lean-stwo-fold
+RUN ln -sf /usr/local/bin/terpz /usr/local/bin/terpd && chmod +x /usr/local/bin/lean-stwo-fold
 
 ENV HOME=/terpd
 WORKDIR $HOME

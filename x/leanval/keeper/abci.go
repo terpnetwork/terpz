@@ -137,6 +137,9 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 			subs[idx].Proof = fold
 		}
 	}
+	// JOIN extras stay on the roster even if Dummy is closed (unverifiable).
+	// Fold of current object roots does not prove them. Dummy extras only
+	// when AllowDummy — do not hide a stall with genesis-only.
 	if k.AllowDummy {
 		for i := range subs {
 			if isFoldProof(subs[i].Proof) {

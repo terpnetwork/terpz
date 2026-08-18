@@ -238,3 +238,34 @@ func TestJoinHonestLNPRProcessAcceptBitsGrow(t *testing.T) {
 		t.Fatalf("honest path bits proposer=%d replica=%d want both >=4", pb, rb)
 	}
 }
+
+func TestNewKeeperLeavesDummyOpenForJoinExtras(t *testing.T) {
+	_ = stallJoinDir(t)
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	if !k.AllowDummy {
+		t.Fatal("NewKeeper must leave Dummy open so JOIN extras are verifiable; fold on PATH is the aggregate, not a cue to close Dummy")
+	}
+	_, _, j0, j1 := stallGenesisTwo(t, k)
+	NoteMembershipBytes(types.EncodeJoin(types.JoinBlob{Period: 0, Subject: j0, Weight: 10}))
+	NoteMembershipBytes(types.EncodeJoin(types.JoinBlob{Period: 0, Subject: j1, Weight: 10}))
+	resp, err := k.WrapPrepareProposal(nil)(&abci.RequestPrepareProposal{Height: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, _, ok := FindLNPR(resp.Txs)
+	if !ok {
+		t.Fatal("LNPR missing")
+	}
+	if len(blob.Subjects) < 4 {
+		t.Fatalf("JOIN files present: subjects=%d want >=4", len(blob.Subjects))
+	}
+	if st := processStatus(t, k, 4, resp.Txs); st != abci.ResponseProcessProposal_ACCEPT {
+		t.Fatalf("honest Dummy extras must ACCEPT, got %s", st)
+	}
+	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
+		t.Fatalf("ApplyLNPR: %v", err)
+	}
+	if n := bitCount(k); n < 4 {
+		t.Fatalf("bits after ApplyLNPR=%d want >=4", n)
+	}
+}

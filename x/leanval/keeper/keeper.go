@@ -36,17 +36,16 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 		store = NewMemStore()
 	}
 	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
+	// Reset process RAM only. Never delete membership files: CLI NewKeeper
+	// shares the container dir with the running node.
 	membershipQ.mu.Lock()
 	membershipQ.txs = nil
 	membershipQ.mu.Unlock()
-	if leanValsetAirBin() != "" {
-		k.AllowDummy = false
-	}
-	if foldBin() != "" {
-		if _, err := ProveSameStatementFold(foldPairStrings(0, nil, nil)); err == nil {
-			k.AllowDummy = false
-		}
-	}
+	// Fold / valset-air on PATH is the aggregate for current object roots.
+	// Extra JOIN/LEAV subjects are not in that statement. Closing Dummy here
+	// makes every proposer carry unverifiable extras → Process REJECT stall.
+	// Do not hide that stall by proposing genesis-only when JOIN files exist.
+	// Dummy on extras is lab admission, not Dummy-N as the green aggregate.
 	return k
 }
 
