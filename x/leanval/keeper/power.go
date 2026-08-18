@@ -239,13 +239,18 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 	if err := k.VerifyLNPR(blob); err != nil {
 		return err
 	}
-	// LNPR is not a replace-set of pubkeys. Bits stay unless LEAV clears them.
+	// LNPR is not a replace-set of pubkeys. Bits stay unless a LEAV subject
+	// (weight 0) clears them. JOIN/LEAV admit only as LNPR subjects.
 	for _, s := range blob.Subjects {
-		if _, ok := k.depositIndexOf(s.Subject); ok {
-			if s.Weight > 0 {
-				k.admitMember(s.Subject, s.Weight)
+		if s.Weight <= 0 {
+			if _, ok := k.depositIndexOf(s.Subject); ok {
+				_ = k.ApplyLeave(types.LeaveBlob{Period: blob.Period, Subject: s.Subject})
 			}
-		} else if s.Weight > 0 && len(s.Subject) > 0 {
+			continue
+		}
+		if _, ok := k.depositIndexOf(s.Subject); ok {
+			k.admitMember(s.Subject, s.Weight)
+		} else if len(s.Subject) > 0 {
 			k.AcceptProof(blob.Period, s.Subject, s.Weight)
 		}
 		k.store.Delete(types.PendingJoinKey(blob.Period, s.Subject))

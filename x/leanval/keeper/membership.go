@@ -1,10 +1,13 @@
 package keeper
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
@@ -48,7 +51,7 @@ func loadMembershipFiles() [][]byte {
 	}
 	var out [][]byte
 	for _, e := range ents {
-		if e.IsDir() {
+		if e.IsDir() || e.Name() == "last-prepare" {
 			continue
 		}
 		bz, err := os.ReadFile(filepath.Join(membershipDir(), e.Name()))
@@ -176,30 +179,57 @@ func (k *Keeper) ClearPendingMembership() {
 	clearMembershipFiles()
 }
 
+type lastPrepareFile struct {
+	Pending      int `json:"pending"`
+	LNPRSubjects int `json:"lnpr_subjects"`
+}
+
+func writeLastPrepare(pending, lnprSubjects int) {
+	dir := membershipDir()
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	bz, err := json.Marshal(lastPrepareFile{Pending: pending, LNPRSubjects: lnprSubjects})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "last-prepare"), append(bz, '\n'), 0o644)
+}
+
 func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []SubjectPower {
-	leave := map[string]struct{}{}
+	leave := map[string][]byte{}
 	var joins []SubjectPower
 	k.store.IteratePrefix(types.PendingLeavePrefixForPeriod(period), func(key, _ []byte) bool {
 		pref := types.PendingLeavePrefixForPeriod(period)
-		leave[string(key[len(pref):])] = struct{}{}
+		subj := append([]byte(nil), key[len(pref):]...)
+		leave[string(subj)] = subj
 		return true
 	})
 	for _, tx := range k.PendingMembershipTxs() {
 		if l, ok := types.DecodeLeave(tx); ok {
-			leave[string(l.Subject)] = struct{}{}
+			if err := types.ValidateLeave(l); err != nil {
+				continue
+			}
+			leave[string(l.Subject)] = append([]byte(nil), l.Subject...)
 			continue
 		}
 		if j, ok := types.DecodeJoin(tx); ok {
 			if err := types.ValidateJoin(j); err != nil {
 				continue
 			}
-			if j.Period != 0 && j.Period != period {
-				continue
-			}
+			// Pending JOIN files are LNPR subjects now. Skipping a non-zero
+			// period would propose genesis-only while files exist.
 			joins = append(joins, SubjectPower{Subject: j.Subject, Weight: j.Weight, HasProof: true})
 		}
 	}
-	out := make([]SubjectPower, 0, len(set)+len(joins))
+	inSet := make(map[string]struct{}, len(set))
+	for _, s := range set {
+		inSet[string(s.Subject)] = struct{}{}
+	}
+	out := make([]SubjectPower, 0, len(set)+len(joins)+len(leave))
 	seen := map[string]struct{}{}
 	for _, s := range set {
 		if _, drop := leave[string(s.Subject)]; drop {
@@ -218,5 +248,17 @@ func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []Subj
 		out = append(out, j)
 		seen[string(j.Subject)] = struct{}{}
 	}
+	// LEAV admits as a weight-0 LNPR subject only while the bit is still set.
+	for key, subj := range leave {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		if _, was := inSet[key]; !was {
+			continue
+		}
+		out = append(out, SubjectPower{Subject: subj, Weight: 0, HasProof: true})
+		seen[key] = struct{}{}
+	}
+	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i].Subject, out[j].Subject) < 0 })
 	return out
 }
