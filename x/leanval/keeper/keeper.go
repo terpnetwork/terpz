@@ -36,7 +36,11 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 		store = NewMemStore()
 	}
 	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
-	k.ClearPendingMembership()
+	// Reset process RAM queue only. Never delete membership files: CLI query
+	// NewKeeper shares the container /tmp with the running node.
+	membershipQ.mu.Lock()
+	membershipQ.txs = nil
+	membershipQ.mu.Unlock()
 	if leanValsetAirBin() != "" {
 		k.AllowDummy = false
 	}

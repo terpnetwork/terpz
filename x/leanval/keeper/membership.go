@@ -11,10 +11,20 @@ import (
 )
 
 func membershipDir() string {
+	if d := os.Getenv("LEANVAL_MEMBERSHIP_DIR"); d != "" {
+		return d
+	}
 	return filepath.Join(os.TempDir(), "terp-leanval-membership")
 }
 
+func persistEnabled() bool {
+	return os.Getenv("LEANVAL_MEMBERSHIP_DIR") != ""
+}
+
 func persistMembershipFile(tx []byte) {
+	if !persistEnabled() {
+		return
+	}
 	if err := os.MkdirAll(membershipDir(), 0o755); err != nil {
 		return
 	}
@@ -23,6 +33,9 @@ func persistMembershipFile(tx []byte) {
 }
 
 func loadMembershipFiles() [][]byte {
+	if !persistEnabled() {
+		return nil
+	}
 	ents, err := os.ReadDir(membershipDir())
 	if err != nil {
 		return nil
@@ -42,6 +55,9 @@ func loadMembershipFiles() [][]byte {
 }
 
 func clearMembershipFiles() {
+	if !persistEnabled() {
+		return
+	}
 	_ = os.RemoveAll(membershipDir())
 }
 

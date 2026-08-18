@@ -21,6 +21,7 @@ type ProcessHandler func(*abci.RequestProcessProposal) (*abci.ResponseProcessPro
 // WrapPrepareProposal runs the inner (hashmerchant) handler first, then injects LNPR.
 func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 	return func(req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
+		incoming := append([][]byte(nil), req.Txs...)
 		var txs [][]byte
 		if inner != nil {
 			resp, err := inner(req)
@@ -31,15 +32,27 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 				txs = resp.Txs
 			}
 		} else {
-			txs = append([][]byte(nil), req.Txs...)
+			txs = append([][]byte(nil), incoming...)
 		}
 		period := types.PeriodFromHeight(req.Height)
-		for _, tx := range req.Txs {
+		for _, tx := range incoming {
 			k.NoteMembershipTx(tx)
 		}
+		kept := make([][]byte, 0, len(txs))
+		for _, tx := range txs {
+			if types.IsMembershipTx(tx) {
+				k.NoteMembershipTx(tx)
+				continue
+			}
+			kept = append(kept, tx)
+		}
+		txs = kept
 		// JOIN is admitted via LNPR subjects (ApplyLNPR), not as extra Finalize txs
 		// (MembershipTx GetMsgs is empty and fails Deliver).
 		lnpr := k.buildLNPR(period)
+		blob, _, _ := FindLNPR([][]byte{lnpr})
+		fmt.Printf("leanval: prepare h=%d pending=%d lnpr_subjects=%d req_txs=%d\n",
+			req.Height, len(k.PendingMembershipTxs()), len(blob.Subjects), len(incoming))
 		txs = injectLNPR(txs, lnpr)
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
 	}

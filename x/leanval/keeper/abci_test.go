@@ -111,14 +111,23 @@ func TestPrepareIncludesCometMembershipTxs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
 	for _, tx := range resp.Txs {
 		if types.IsMembershipTx(tx) {
+			t.Fatal("JOIN must not be a Finalize tx; admit via LNPR subjects")
+		}
+	}
+	blob, _, ok := FindLNPR(resp.Txs)
+	if !ok {
+		t.Fatal("LNPR missing")
+	}
+	found := false
+	for _, s := range blob.Subjects {
+		if string(s.Subject) == "new-ed25519" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("JOIN from Comet req.Txs must be in proposal: %d txs", len(resp.Txs))
+		t.Fatalf("JOIN from Comet req.Txs must be an LNPR subject: %+v", blob.Subjects)
 	}
 }
 
