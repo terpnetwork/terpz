@@ -11,6 +11,9 @@ import (
 )
 
 func membershipDir() string {
+	if os.Getenv("LEANVAL_MEMBERSHIP_DISABLE") == "1" {
+		return ""
+	}
 	if d := os.Getenv("LEANVAL_MEMBERSHIP_DIR"); d != "" {
 		return d
 	}
@@ -18,7 +21,7 @@ func membershipDir() string {
 }
 
 func persistEnabled() bool {
-	return os.Getenv("LEANVAL_MEMBERSHIP_DIR") != ""
+	return os.Getenv("LEANVAL_MEMBERSHIP_DISABLE") != "1" && membershipDir() != ""
 }
 
 func persistMembershipFile(tx []byte) {
@@ -55,10 +58,11 @@ func loadMembershipFiles() [][]byte {
 }
 
 func clearMembershipFiles() {
-	if !persistEnabled() {
+	dir := membershipDir()
+	if dir == "" {
 		return
 	}
-	_ = os.RemoveAll(membershipDir())
+	_ = os.RemoveAll(dir)
 }
 
 var membershipQ struct {

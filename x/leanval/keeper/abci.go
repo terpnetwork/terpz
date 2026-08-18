@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"os"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
@@ -51,7 +52,7 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 		// (MembershipTx GetMsgs is empty and fails Deliver).
 		lnpr := k.buildLNPR(period)
 		blob, _, _ := FindLNPR([][]byte{lnpr})
-		fmt.Printf("leanval: prepare h=%d pending=%d lnpr_subjects=%d req_txs=%d\n",
+		fmt.Fprintf(os.Stderr, "leanval: prepare h=%d pending=%d lnpr_subjects=%d req_txs=%d\n",
 			req.Height, len(k.PendingMembershipTxs()), len(blob.Subjects), len(incoming))
 		txs = injectLNPR(txs, lnpr)
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil

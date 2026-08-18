@@ -2,6 +2,7 @@ package leanval
 
 import (
 	"fmt"
+	"os"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -19,7 +20,7 @@ func NewCheckTx(k *keeper.Keeper) sdk.CheckTxHandler {
 		if resp != nil && resp.Code == 0 && req != nil {
 			k.NoteMembershipTx(req.Tx)
 			if types.IsMembershipTx(req.Tx) {
-				fmt.Printf("leanval: checktx note pending=%d\n", len(k.PendingMembershipTxs()))
+				fmt.Fprintf(os.Stderr, "leanval: checktx note pending=%d\n", len(k.PendingMembershipTxs()))
 			}
 		}
 		return resp, nil
