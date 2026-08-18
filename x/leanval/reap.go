@@ -6,14 +6,21 @@ import (
 	"github.com/terpnetwork/terp-core/v6/x/leanval/keeper"
 )
 
-func NewInsertTx(_ *keeper.Keeper) func(*abci.RequestInsertTx) (*abci.ResponseInsertTx, error) {
-	return func(*abci.RequestInsertTx) (*abci.ResponseInsertTx, error) {
+func NewInsertTx(k *keeper.Keeper) func(*abci.RequestInsertTx) (*abci.ResponseInsertTx, error) {
+	return func(req *abci.RequestInsertTx) (*abci.ResponseInsertTx, error) {
+		if req != nil && k != nil {
+			k.NoteMembershipTx(req.Tx)
+		}
 		return &abci.ResponseInsertTx{}, nil
 	}
 }
 
-func NewReapTxs(_ *keeper.Keeper) func(*abci.RequestReapTxs) (*abci.ResponseReapTxs, error) {
+func NewReapTxs(k *keeper.Keeper) func(*abci.RequestReapTxs) (*abci.ResponseReapTxs, error) {
 	return func(*abci.RequestReapTxs) (*abci.ResponseReapTxs, error) {
-		return &abci.ResponseReapTxs{}, nil
+		var txs [][]byte
+		if k != nil {
+			txs = k.PendingMembershipTxs()
+		}
+		return &abci.ResponseReapTxs{Txs: txs}, nil
 	}
 }
