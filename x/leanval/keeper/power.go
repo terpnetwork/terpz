@@ -95,16 +95,28 @@ func (k *Keeper) PutSubject(period uint64, subject []byte, claimedWeight int64) 
 }
 
 // AcceptProof marks a verified proof for (P, subject). Weight applies only after accept.
+// Also allocates a deposit-tree index and sets the participation bit (SoT).
 func (k *Keeper) AcceptProof(period uint64, subject []byte, weight int64) {
 	k.store.Set(types.BondedKey(period, subject), encodeRec(true, weight))
+	k.admitMember(subject, weight)
 }
 
-// ValidatorUpdates emits Comet updates from BondedSet only (no staking path).
+// ValidatorUpdates emits Comet VP from set bits + EB tree (not staking shares).
 func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
-	set := k.BondedSetOrCarry(period)
+	_ = period
+	usingBits := len(k.store.Get(types.BitfieldKey())) > 0 || k.nextDepositIndex() > 0
+	var set []SubjectPower
+	if usingBits {
+		set = k.DebugSubjectsFromBits()
+	} else {
+		set = k.BondedSetOrCarry(period)
+	}
 	seen := map[string]struct{}{}
 	var ups []abci.ValidatorUpdate
 	for _, s := range set {
+		if usingBits && (!s.HasProof || s.Weight == 0) {
+			continue
+		}
 		seen[string(s.Subject)] = struct{}{}
 		prev := types.GetI64(k.store.Get(types.LastPowerKey(s.Subject)))
 		if prev == s.Weight && prev != 0 {
@@ -210,7 +222,7 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 		return VerifySameStatementFold(fold, foldPairStrings(blob.Period, blob.Subjects, roots))
 	}
 	if !k.AllowDummy {
-		return errProof("STWO FOLD required (no per-subject Dummy waist)")
+		return errProof("STWO FOLD required (bitfield root, not Dummy-N)")
 	}
 	for i, s := range blob.Subjects {
 		if len(s.Proof) > types.MaxProofBytes {
@@ -227,14 +239,19 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 	if err := k.VerifyLNPR(blob); err != nil {
 		return err
 	}
-	listed := make(map[string]struct{}, len(blob.Subjects))
+	// LNPR is not a replace-set of pubkeys. Bits stay unless LEAV clears them.
 	for _, s := range blob.Subjects {
-		k.AcceptProof(blob.Period, s.Subject, s.Weight)
-		listed[string(s.Subject)] = struct{}{}
+		if _, ok := k.depositIndexOf(s.Subject); ok {
+			if s.Weight > 0 {
+				k.admitMember(s.Subject, s.Weight)
+			}
+		} else if s.Weight > 0 && len(s.Subject) > 0 {
+			k.AcceptProof(blob.Period, s.Subject, s.Weight)
+		}
 		k.store.Delete(types.PendingJoinKey(blob.Period, s.Subject))
 		k.store.Delete(types.PendingJoinKey(0, s.Subject))
 	}
-	k.dropUnlisted(blob.Period, listed)
+	k.syncObjectRoots()
 	return nil
 }
 

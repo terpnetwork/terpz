@@ -518,16 +518,16 @@ mod tests {
 
     #[cfg(feature = "real-stwo")]
     #[test]
-    fn test_fold_n_instances_one_verify() {
-        let pairs = [
-            (M31::new(1).unwrap(), M31::new(2).unwrap()),
-            (M31::new(3).unwrap(), M31::new(4).unwrap()),
-            (M31::new(5).unwrap(), M31::new(6).unwrap()),
-        ];
-        let proof = crate::prove_fold(&pairs).expect("prove fold");
+    fn test_fold_binds_bitfield_root() {
+        let mut bf = [0u8; 32];
+        bf[0] = 0xab;
+        let dep = [1u8; 32];
+        let eb = [2u8; 32];
+        let proof = crate::prove_fold(bf, dep, eb).expect("prove fold");
         assert_eq!(&proof[0..4], STWO_MAGIC);
         assert_eq!(&proof[6..10], crate::FOLD_KIND);
-        crate::verify_fold(&proof, &pairs).expect("one verify");
+        assert_eq!(&proof[10..42], &bf);
+        crate::verify_fold(&proof, bf, dep, eb).expect("one verify");
     }
 
     #[cfg(feature = "real-stwo")]
@@ -539,37 +539,31 @@ mod tests {
         let d2 = DummyStwo::prove(M31::new(3).unwrap(), M31::new(4).unwrap());
         let mut concat = d1.clone();
         concat.extend_from_slice(&d2);
-        let pairs = [(a, b), (M31::new(3).unwrap(), M31::new(4).unwrap())];
-        assert!(crate::verify_fold(&concat, &pairs).is_err(), "Dummy-N must FAIL");
+        let z = [0u8; 32];
+        assert!(crate::verify_fold(&concat, z, z, z).is_err(), "Dummy-N must FAIL");
         assert!(crate::reject_dummy_n(&concat).is_err());
-        assert!(crate::verify_fold(&d1, &pairs).is_err());
     }
 
     #[cfg(feature = "real-stwo")]
     #[test]
-    fn test_fold_wrong_instance_rejects() {
-        let pairs = [
-            (M31::new(1).unwrap(), M31::new(2).unwrap()),
-            (M31::new(3).unwrap(), M31::new(4).unwrap()),
-        ];
-        let proof = crate::prove_fold(&pairs).expect("prove");
-        let other = [
-            (M31::new(1).unwrap(), M31::new(2).unwrap()),
-            (M31::new(9).unwrap(), M31::new(4).unwrap()),
-        ];
-        assert!(crate::verify_fold(&proof, &other).is_err());
+    fn test_fold_wrong_root_rejects() {
+        let bf = [3u8; 32];
+        let dep = [4u8; 32];
+        let eb = [5u8; 32];
+        let proof = crate::prove_fold(bf, dep, eb).expect("prove");
+        let other = [9u8; 32];
+        assert!(crate::verify_fold(&proof, other, dep, eb).is_err());
     }
 
     #[cfg(feature = "real-stwo")]
     #[test]
     fn test_fold_bitflip_rejects() {
-        let pairs = [
-            (M31::new(11).unwrap(), M31::new(22).unwrap()),
-            (M31::new(33).unwrap(), M31::new(44).unwrap()),
-        ];
-        let mut proof = crate::prove_fold(&pairs).expect("prove");
+        let bf = [11u8; 32];
+        let dep = [22u8; 32];
+        let eb = [33u8; 32];
+        let mut proof = crate::prove_fold(bf, dep, eb).expect("prove");
         let i = proof.len() / 2;
         proof[i] ^= 1;
-        assert!(crate::verify_fold(&proof, &pairs).is_err());
+        assert!(crate::verify_fold(&proof, bf, dep, eb).is_err());
     }
 }

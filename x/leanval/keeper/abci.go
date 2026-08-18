@@ -34,15 +34,9 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 			txs = append([][]byte(nil), req.Txs...)
 		}
 		period := types.PeriodFromHeight(req.Height)
-		for _, tx := range req.Txs {
-			k.NoteMembershipTx(tx)
-		}
+		// Bit flip is app-state + proof. Do not rebuild the JOIN CheckTx inbox.
 		lnpr := k.buildLNPR(period)
 		txs = injectLNPR(txs, lnpr)
-		// App mempool ignores Comet req.Txs (ADR-060). Re-include CheckTx-ok JOIN/LEAV.
-		txs = appendMembershipFromComet(txs, req.Txs)
-		txs = appendMembershipFromComet(txs, k.PendingMembershipTxs())
-		txs = appendMembershipFromComet(txs, k.StoredMembershipTxs(period))
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
 	}
 }
@@ -83,17 +77,23 @@ func (k *Keeper) checkLNPR(height int64, txs [][]byte) error {
 // Disk lean-pending.json / LEANVAL_PENDING is not admission: two honest
 // replicas with the same app hash must propose the same set.
 func (k *Keeper) buildLNPR(period uint64) []byte {
-	set := k.BondedSetOrCarry(period)
-	set = k.applyQueuedMembership(period, set)
-	subs := make([]types.SubjectProof, 0, len(set))
-	roots := k.LastObjectRoots()
-	for i, s := range set {
-		subs = append(subs, types.SubjectProof{Subject: s.Subject, Weight: s.Weight})
-		_ = i
+	k.syncObjectRoots()
+	set := k.DebugSubjectsFromBits()
+	if len(set) == 0 {
+		set = k.BondedSetOrCarry(period)
 	}
+	subs := make([]types.SubjectProof, 0, len(set))
+	for _, s := range set {
+		subs = append(subs, types.SubjectProof{Subject: s.Subject, Weight: s.Weight})
+	}
+	roots := k.LastObjectRoots()
 	pairs := foldPairStrings(period, subs, roots)
-	if fold, err := ProveSameStatementFold(pairs); err == nil && len(fold) > 0 && len(subs) > 0 {
-		subs[0].Proof = fold
+	if fold, err := ProveSameStatementFold(pairs); err == nil && len(fold) > 0 {
+		if len(subs) == 0 {
+			subs = []types.SubjectProof{{Subject: types.DepositIndexBytes(0), Weight: 0, Proof: fold}}
+		} else {
+			subs[0].Proof = fold
+		}
 		return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 	}
 	if k.AllowDummy {

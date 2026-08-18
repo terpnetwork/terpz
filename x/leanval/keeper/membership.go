@@ -56,6 +56,7 @@ func (k *Keeper) ApplyJoin(b types.JoinBlob) error {
 	if err := types.ValidateJoin(b); err != nil {
 		return err
 	}
+	// JOIN = allocate next index + set bit (not CheckTx inbox / req.Txs).
 	k.store.Set(types.PendingJoinKey(b.Period, b.Subject), types.PutI64(b.Weight))
 	k.AcceptProof(b.Period, b.Subject, b.Weight)
 	return nil
@@ -67,6 +68,10 @@ func (k *Keeper) ApplyLeave(b types.LeaveBlob) error {
 	}
 	k.store.Set(types.PendingLeaveKey(b.Period, b.Subject), []byte{1})
 	k.store.Delete(types.BondedKey(b.Period, b.Subject))
+	if idx, ok := k.depositIndexOf(b.Subject); ok {
+		k.BitClear(idx)
+		k.SetEB(idx, 0)
+	}
 	return nil
 }
 

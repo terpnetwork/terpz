@@ -19,12 +19,13 @@ func TestApplyLNPRSameBlockTwoJoins(t *testing.T) {
 	c := make([]byte, 32)
 	c[0] = 3
 	k.AcceptProof(0, a, 10)
+	roots := k.LastObjectRoots()
 	blob := types.LNPRBlob{
 		Period: 0,
 		Subjects: []types.SubjectProof{
-			{Subject: a, Weight: 10, Proof: DummyStwoProveBound(0, a, 10)},
-			{Subject: b, Weight: 10, Proof: DummyStwoProveBound(0, b, 10)},
-			{Subject: c, Weight: 10, Proof: DummyStwoProveBound(0, c, 10)},
+			{Subject: a, Weight: 10, Proof: DummyStwoProveBoundRoots(0, a, 10, roots)},
+			{Subject: b, Weight: 10, Proof: DummyStwoProveBoundRoots(0, b, 10, roots)},
+			{Subject: c, Weight: 10, Proof: DummyStwoProveBoundRoots(0, c, 10, roots)},
 		},
 	}
 	if err := k.ApplyLNPR(blob); err != nil {
@@ -45,13 +46,7 @@ func TestApplyLNPRLeaveDropsAndZeros(t *testing.T) {
 	k.AcceptProof(0, stay, 10)
 	k.AcceptProof(0, gone, 10)
 	_ = k.ValidatorUpdates(0)
-	blob := types.LNPRBlob{
-		Period: 0,
-		Subjects: []types.SubjectProof{
-			{Subject: stay, Weight: 10, Proof: DummyStwoProveBound(0, stay, 10)},
-		},
-	}
-	if err := k.ApplyLNPR(blob); err != nil {
+	if err := k.ApplyLeave(types.LeaveBlob{Period: 0, Subject: gone}); err != nil {
 		t.Fatal(err)
 	}
 	set := k.BondedSet(0)
@@ -78,12 +73,7 @@ func TestAllocateSkipsLeftValidator(t *testing.T) {
 	gone[0] = 2
 	k.AcceptProof(0, stay, 10)
 	k.AcceptProof(0, gone, 10)
-	if err := k.ApplyLNPR(types.LNPRBlob{
-		Period: 0,
-		Subjects: []types.SubjectProof{
-			{Subject: stay, Weight: 10, Proof: DummyStwoProveBound(0, stay, 10)},
-		},
-	}); err != nil {
+	if err := k.ApplyLeave(types.LeaveBlob{Period: 0, Subject: gone}); err != nil {
 		t.Fatal(err)
 	}
 	votes, total := VoteInfosFromBondedSet(k.BondedSet(0))

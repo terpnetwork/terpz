@@ -71,15 +71,17 @@ func TestCommittedLeaveThenPrepare(t *testing.T) {
 func TestTwoReplicasSameMembershipTxs(t *testing.T) {
 	stay := bytes.Repeat([]byte{0x11}, 32)
 	join := bytes.Repeat([]byte{0x22}, 32)
-	txs := [][]byte{
-		types.EncodeLNPR(types.LNPRBlob{Period: 0, Subjects: []types.SubjectProof{
-			{Subject: stay, Weight: 10, Proof: DummyStwoProveBound(0, stay, 10)},
-		}}),
-		types.EncodeJoin(types.JoinBlob{Period: 0, Subject: join, Weight: 8}),
-	}
 	apply := func() []SubjectPower {
 		k := NewKeeper(NewMemStore(), DummyStwoGo{})
+		k.AllowDummy = true
 		k.AcceptProof(0, stay, 10)
+		roots := k.LastObjectRoots()
+		txs := [][]byte{
+			types.EncodeLNPR(types.LNPRBlob{Period: 0, Subjects: []types.SubjectProof{
+				{Subject: stay, Weight: 10, Proof: DummyStwoProveBoundRoots(0, stay, 10, roots)},
+			}}),
+			types.EncodeJoin(types.JoinBlob{Period: 0, Subject: join, Weight: 8}),
+		}
 		if err := k.ProcessInjectedLNPR(txs); err != nil {
 			t.Fatal(err)
 		}
@@ -104,9 +106,10 @@ func TestProcessMembershipAfterLNPRKeepsJoin(t *testing.T) {
 	stay := bytes.Repeat([]byte{0x11}, 32)
 	join := bytes.Repeat([]byte{0x22}, 32)
 	k.AcceptProof(0, stay, 10)
+	roots := k.LastObjectRoots()
 	txs := [][]byte{
 		types.EncodeLNPR(types.LNPRBlob{Period: 0, Subjects: []types.SubjectProof{
-			{Subject: stay, Weight: 10, Proof: DummyStwoProveBound(0, stay, 10)},
+			{Subject: stay, Weight: 10, Proof: DummyStwoProveBoundRoots(0, stay, 10, roots)},
 		}}),
 		types.EncodeJoin(types.JoinBlob{Period: 0, Subject: join, Weight: 8}),
 	}
@@ -140,9 +143,10 @@ func TestStorePendingJoinSurvivesLNPRReplace(t *testing.T) {
 		t.Fatalf("subjects=%d want 2 after store pending", len(dec.Subjects))
 	}
 	// LNPR of genesis only must not wipe the pending join row
+	gen := []byte("genesis-ed25519-key-32bytesxxxx")
 	if err := k.ApplyLNPR(types.LNPRBlob{Period: 0, Subjects: []types.SubjectProof{{
-		Subject: []byte("genesis-ed25519-key-32bytesxxxx"), Weight: 10,
-		Proof: DummyStwoProveBoundRoots(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10, nil),
+		Subject: gen, Weight: 10,
+		Proof: DummyStwoProveBoundRoots(0, gen, 10, k.LastObjectRoots()),
 	}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -162,24 +166,11 @@ func TestPrepareAppendsStorePendingJoinTx(t *testing.T) {
 	}
 	k.ClearPendingMembership()
 	h := k.WrapPrepareProposal(nil)
-	resp, err := h(&abci.RequestPrepareProposal{Height: 1})
-	if err != nil {
+	if _, err := h(&abci.RequestPrepareProposal{Height: 1}); err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, tx := range resp.Txs {
-		if j, ok := types.DecodeJoin(tx); ok && bytes.Equal(j.Subject, join) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("store pending join must be in proposal txs: %d", len(resp.Txs))
-	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatal(err)
-	}
-	if err := k.ProcessMembershipTxs(resp.Txs); err != nil {
-		t.Fatal(err)
+	if !k.BitIsSet(1) {
+		t.Fatal("store join must set participation bit (not req.Txs)")
 	}
 	if n := len(k.QueryBondedSet(0)); n != 2 {
 		t.Fatalf("BondedSet=%d want 2", n)

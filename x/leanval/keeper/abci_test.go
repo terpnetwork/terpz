@@ -157,8 +157,9 @@ func TestBuildLNPRIncludesQueuedJoin(t *testing.T) {
 	k := NewKeeper(NewMemStore(), DummyStwoGo{})
 	k.AllowDummy = true
 	k.AcceptProof(0, []byte("genesis-ed25519-key-32bytesxxxx"), 10)
-	join := types.EncodeJoin(types.JoinBlob{Period: 0, Subject: []byte("joiner-ed25519-key-32bytesxxxxx"), Weight: 8})
-	k.NoteMembershipTx(join)
+	if err := k.ApplyJoin(types.JoinBlob{Period: 0, Subject: []byte("joiner-ed25519-key-32bytesxxxxx"), Weight: 8}); err != nil {
+		t.Fatal(err)
+	}
 	blob := types.EncodeLNPR(types.LNPRBlob{}) // placeholder
 	_ = blob
 	raw := k.buildLNPR(0)
