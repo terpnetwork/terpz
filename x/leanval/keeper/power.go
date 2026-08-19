@@ -291,6 +291,7 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 		}
 		k.live().Delete(types.PendingJoinKey(blob.Period, s.Subject))
 		k.live().Delete(types.PendingJoinKey(0, s.Subject))
+		forgetMembershipSubject(s.Subject)
 	}
 	k.syncObjectRoots()
 	after := countSetBits(k)

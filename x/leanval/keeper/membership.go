@@ -199,6 +199,49 @@ func writeLastPrepare(pending, lnprSubjects int) {
 	_ = os.WriteFile(filepath.Join(dir, "last-prepare"), append(bz, '\n'), 0o644)
 }
 
+func forgetMembershipSubject(subject []byte) {
+	if len(subject) == 0 {
+		return
+	}
+	membershipQ.mu.Lock()
+	var keep [][]byte
+	for _, tx := range membershipQ.txs {
+		if j, ok := types.DecodeJoin(tx); ok && bytes.Equal(j.Subject, subject) {
+			continue
+		}
+		if l, ok := types.DecodeLeave(tx); ok && bytes.Equal(l.Subject, subject) {
+			continue
+		}
+		keep = append(keep, tx)
+	}
+	membershipQ.txs = keep
+	membershipQ.mu.Unlock()
+	if !persistEnabled() {
+		return
+	}
+	dir := membershipDir()
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		bz, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if j, ok := types.DecodeJoin(bz); ok && bytes.Equal(j.Subject, subject) {
+			_ = os.Remove(path)
+		}
+		if l, ok := types.DecodeLeave(bz); ok && bytes.Equal(l.Subject, subject) {
+			_ = os.Remove(path)
+		}
+	}
+}
+
 func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []SubjectPower {
 	leave := map[string][]byte{}
 	var joins []SubjectPower
