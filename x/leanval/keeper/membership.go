@@ -233,7 +233,8 @@ func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []Subj
 	seen := map[string]struct{}{}
 	for _, s := range set {
 		if _, drop := leave[string(s.Subject)]; drop {
-			continue
+			s.Weight = 0
+			s.HasProof = true
 		}
 		out = append(out, s)
 		seen[string(s.Subject)] = struct{}{}
