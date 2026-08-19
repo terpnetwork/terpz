@@ -59,6 +59,19 @@ func TestLeaveAfterJoinDoesNotRejoin(t *testing.T) {
 	if n := countSetBits(k); n != 2 {
 		t.Fatalf("JOIN file re-admitted leaver bits=%d want 2", n)
 	}
+	// Recheck of spent JOIN (Comet flood mempool) must not re-admit.
+	k.NoteMembershipTx(types.EncodeJoin(types.JoinBlob{Period: 0, Subject: joiner, Weight: 10}))
+	raw = k.buildLNPR(0)
+	blob, ok = types.DecodeLNPR(raw)
+	if !ok {
+		t.Fatal("recheck lnpr")
+	}
+	if err := k.ApplyLNPR(blob); err != nil {
+		t.Fatal(err)
+	}
+	if n := countSetBits(k); n != 2 {
+		t.Fatalf("Recheck JOIN re-admitted leaver bits=%d want 2", n)
+	}
 }
 
 func bytes32(fill byte) []byte {

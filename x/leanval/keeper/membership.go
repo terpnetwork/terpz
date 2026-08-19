@@ -133,6 +133,13 @@ func NoteMembershipBytes(tx []byte) {
 }
 
 func (k *Keeper) NoteMembershipTx(tx []byte) {
+	if j, ok := types.DecodeJoin(tx); ok {
+		if _, exists := k.depositIndexOf(j.Subject); exists {
+			// Already on the roster (or left with index kept). Recheck of a
+			// spent JOIN must not queue a re-admit over a LEAV.
+			return
+		}
+	}
 	NoteMembershipBytes(tx)
 }
 
@@ -263,8 +270,9 @@ func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []Subj
 			if err := types.ValidateJoin(j); err != nil {
 				continue
 			}
-			// Pending JOIN files are LNPR subjects now. Skipping a non-zero
-			// period would propose genesis-only while files exist.
+			if _, exists := k.depositIndexOf(j.Subject); exists {
+				continue
+			}
 			joins = append(joins, SubjectPower{Subject: j.Subject, Weight: j.Weight, HasProof: true})
 		}
 	}
