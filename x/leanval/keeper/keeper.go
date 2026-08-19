@@ -25,6 +25,7 @@ type Keeper struct {
 	leanZkID      uint64
 	sdkCtx        sdk.Context
 	hasCtx        bool
+	pendingLNPR   *types.LNPRBlob
 	memMembership [][]byte
 }
 

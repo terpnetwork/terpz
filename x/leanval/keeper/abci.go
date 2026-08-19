@@ -222,6 +222,25 @@ func (k *Keeper) ProcessInjectedLNPR(txs [][]byte) error {
 		}
 		return nil
 	}
+	if err := k.VerifyLNPR(blob); err != nil {
+		return err
+	}
+	cp := blob
+	k.pendingLNPR = &cp
+	// Live app has a StoreKey: Apply in EndBlocker so writes hit the
+	// committed Finalize KV. Unit tests (sk == nil) apply immediately.
+	if k.sk == nil {
+		return k.ApplyLNPR(blob)
+	}
+	return nil
+}
+
+func (k *Keeper) ApplyStagedLNPR() error {
+	if k.pendingLNPR == nil {
+		return nil
+	}
+	blob := *k.pendingLNPR
+	k.pendingLNPR = nil
 	return k.ApplyLNPR(blob)
 }
 

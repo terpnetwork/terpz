@@ -585,11 +585,16 @@ func (app *TerpApp) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	if err != nil {
 		return eb, err
 	}
-	if app.LeanvalKeeper != nil && app.LeanvalKeeper.OwnsValset() {
+	if app.LeanvalKeeper != nil {
 		app.LeanvalKeeper.BindContext(ctx)
-		p := leanvaltypes.PeriodFromHeight(ctx.BlockHeight())
-		app.LeanvalKeeper.SetEndPeriod(p)
-		eb.ValidatorUpdates = app.LeanvalKeeper.ValidatorUpdates(p)
+		if err := app.LeanvalKeeper.ApplyStagedLNPR(); err != nil {
+			return eb, err
+		}
+		if app.LeanvalKeeper.OwnsValset() {
+			p := leanvaltypes.PeriodFromHeight(ctx.BlockHeight())
+			app.LeanvalKeeper.SetEndPeriod(p)
+			eb.ValidatorUpdates = app.LeanvalKeeper.ValidatorUpdates(p)
+		}
 	}
 	return eb, nil
 }
