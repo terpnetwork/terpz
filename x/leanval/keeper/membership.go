@@ -207,17 +207,31 @@ func writeLastPrepare(pending, lnprSubjects int) {
 }
 
 func forgetMembershipSubject(subject []byte) {
+	forgetMembership(subject, true, true)
+}
+
+// forgetMembershipJoin drops spent JOIN only. A pending LEAV for the same
+// subject must survive roster-refresh Applies (weight>0 LNPR of the current bits).
+func forgetMembershipJoin(subject []byte) {
+	forgetMembership(subject, true, false)
+}
+
+func forgetMembership(subject []byte, dropJoin, dropLeave bool) {
 	if len(subject) == 0 {
 		return
 	}
 	membershipQ.mu.Lock()
 	var keep [][]byte
 	for _, tx := range membershipQ.txs {
-		if j, ok := types.DecodeJoin(tx); ok && bytes.Equal(j.Subject, subject) {
-			continue
+		if dropJoin {
+			if j, ok := types.DecodeJoin(tx); ok && bytes.Equal(j.Subject, subject) {
+				continue
+			}
 		}
-		if l, ok := types.DecodeLeave(tx); ok && bytes.Equal(l.Subject, subject) {
-			continue
+		if dropLeave {
+			if l, ok := types.DecodeLeave(tx); ok && bytes.Equal(l.Subject, subject) {
+				continue
+			}
 		}
 		keep = append(keep, tx)
 	}
@@ -240,11 +254,15 @@ func forgetMembershipSubject(subject []byte) {
 		if err != nil {
 			continue
 		}
-		if j, ok := types.DecodeJoin(bz); ok && bytes.Equal(j.Subject, subject) {
-			_ = os.Remove(path)
+		if dropJoin {
+			if j, ok := types.DecodeJoin(bz); ok && bytes.Equal(j.Subject, subject) {
+				_ = os.Remove(path)
+			}
 		}
-		if l, ok := types.DecodeLeave(bz); ok && bytes.Equal(l.Subject, subject) {
-			_ = os.Remove(path)
+		if dropLeave {
+			if l, ok := types.DecodeLeave(bz); ok && bytes.Equal(l.Subject, subject) {
+				_ = os.Remove(path)
+			}
 		}
 	}
 }
