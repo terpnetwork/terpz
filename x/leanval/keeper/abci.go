@@ -258,3 +258,36 @@ func writeLastProcess(status, errMsg string, height int64, txs [][]byte) {
 	}
 	_ = os.WriteFile(filepath.Join(dir, "last-process"), append(bz, '\n'), 0o644)
 }
+
+func countSetBits(k *Keeper) int {
+	n := 0
+	for i := uint32(0); i < k.nextDepositIndex()+8; i++ {
+		if k.BitIsSet(i) {
+			n++
+		}
+	}
+	return n
+}
+
+type lastApplyFile struct {
+	Status       string `json:"status"`
+	Err          string `json:"err,omitempty"`
+	BitsBefore   int    `json:"bits_before"`
+	BitsAfter    int    `json:"bits_after"`
+	LNPRSubjects int    `json:"lnpr_subjects"`
+}
+
+func writeLastApply(status, errMsg string, before, after, nsubj int) {
+	dir := membershipDir()
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	bz, err := json.Marshal(lastApplyFile{Status: status, Err: errMsg, BitsBefore: before, BitsAfter: after, LNPRSubjects: nsubj})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, "last-apply"), append(bz), 0o644)
+}

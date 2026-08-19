@@ -270,7 +270,9 @@ func (k *Keeper) knownSubjectSet(period uint64) map[string]struct{} {
 }
 
 func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
+	before := countSetBits(k)
 	if err := k.VerifyLNPR(blob); err != nil {
+		writeLastApply("VERIFY", err.Error(), before, before, len(blob.Subjects))
 		return err
 	}
 	// LNPR is not a replace-set of pubkeys. Bits stay unless a LEAV subject
@@ -291,6 +293,8 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 		k.store.Delete(types.PendingJoinKey(0, s.Subject))
 	}
 	k.syncObjectRoots()
+	after := countSetBits(k)
+	writeLastApply("OK", "", before, after, len(blob.Subjects))
 	return nil
 }
 
