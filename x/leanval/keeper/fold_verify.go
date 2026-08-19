@@ -97,9 +97,29 @@ func foldBin() string {
 		return runnableFold(p)
 	}
 	if p, err := exec.LookPath("lean-stwo-fold"); err == nil {
-		return runnableFold(p)
+		if r := runnableFold(p); r != "" {
+			return r
+		}
+	}
+	for _, cand := range foldBinCandidates() {
+		if r := runnableFold(cand); r != "" {
+			return r
+		}
 	}
 	return ""
+}
+
+func foldBinCandidates() []string {
+	// Host tests use the Darwin/native target; Docker uses PATH or LEAN_STWO_FOLD.
+	// runnableFold rejects the wrong OS ELF.
+	return []string{
+		"crates/lean-stwo-dummy/target/release/lean-stwo-fold",
+		"../crates/lean-stwo-dummy/target/release/lean-stwo-fold",
+		"../../crates/lean-stwo-dummy/target/release/lean-stwo-fold",
+		"../../../crates/lean-stwo-dummy/target/release/lean-stwo-fold",
+		"crates/lean-stwo-dummy/target-musl/aarch64-unknown-linux-musl/release/lean-stwo-fold",
+		"../../../crates/lean-stwo-dummy/target-musl/aarch64-unknown-linux-musl/release/lean-stwo-fold",
+	}
 }
 
 func runnableFold(p string) string {

@@ -5,12 +5,13 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
-	"github.com/terpnetwork/terp-core/v6/x/leanval/keeper"
 	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
 // WrapTxDecoder rejects LNPR-prefixed bytes at CheckTx (vote-sdk inject-class).
 // JOIN/LEAV are committed membership txs: decode to MembershipTx (mempool-legal).
+// Recheck of a spent JOIN still in Comet flood must not Note; only NewCheckTx
+// -> NoteMembershipTx may queue, and it skips JOIN once a deposit index exists.
 func WrapTxDecoder(inner sdk.TxDecoder) sdk.TxDecoder {
 	return func(txBytes []byte) (sdk.Tx, error) {
 		if err := types.RejectMempoolLNPR(txBytes); err != nil {
@@ -28,8 +29,7 @@ func WrapTxDecoder(inner sdk.TxDecoder) sdk.TxDecoder {
 			} else {
 				return nil, types.ErrMempoolLNPR
 			}
-			keeper.NoteMembershipBytes(txBytes)
-			return types.MembershipTx{Raw: append([]byte(nil), txBytes...)}, nil
+				return types.MembershipTx{Raw: append([]byte(nil), txBytes...)}, nil
 		}
 		return inner(txBytes)
 	}
@@ -49,7 +49,8 @@ func WrapAnte(inner sdk.AnteHandler) sdk.AnteHandler {
 }
 
 // CheckTx accepts JOIN/LEAV without RunTx (GetMsgs is empty; apply is PreBlock).
-// Other txs use the default runTx path.
+// Other txs use the default runTx path. Does not Note: Recheck would re-queue
+// spent JOIN over a committed LEAV. NewCheckTx is the only CheckTx Note path.
 func CheckTx(runTx sdk.RunTx, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
 	if types.IsMembershipTx(req.Tx) {
 		if j, ok := types.DecodeJoin(req.Tx); ok {
@@ -63,7 +64,6 @@ func CheckTx(runTx sdk.RunTx, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, 
 		} else {
 			return &abci.ResponseCheckTx{Code: 1, Log: "leanval: bad membership tx"}, nil
 		}
-		keeper.NoteMembershipBytes(req.Tx)
 		return &abci.ResponseCheckTx{Code: 0, GasWanted: 0}, nil
 	}
 	gInfo, result, anteEvents, err := runTx(req.Tx, nil)

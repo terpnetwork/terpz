@@ -282,6 +282,8 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 			if _, ok := k.depositIndexOf(s.Subject); ok {
 				_ = k.ApplyLeave(types.LeaveBlob{Period: blob.Period, Subject: s.Subject})
 			}
+			// Recheck of spent JOIN/LEAV must not keep files that rebuild the roster.
+			forgetMembershipSubject(s.Subject)
 			continue
 		}
 		if _, ok := k.depositIndexOf(s.Subject); ok {
