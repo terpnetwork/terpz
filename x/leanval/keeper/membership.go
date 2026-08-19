@@ -80,7 +80,7 @@ func (k *Keeper) ApplyJoin(b types.JoinBlob) error {
 	if err := types.ValidateJoin(b); err != nil {
 		return err
 	}
-	k.store.Set(types.PendingJoinKey(b.Period, b.Subject), types.PutI64(b.Weight))
+	k.live().Set(types.PendingJoinKey(b.Period, b.Subject), types.PutI64(b.Weight))
 	k.AcceptProof(b.Period, b.Subject, b.Weight)
 	return nil
 }
@@ -89,8 +89,8 @@ func (k *Keeper) ApplyLeave(b types.LeaveBlob) error {
 	if err := types.ValidateLeave(b); err != nil {
 		return err
 	}
-	k.store.Set(types.PendingLeaveKey(b.Period, b.Subject), []byte{1})
-	k.store.Delete(types.BondedKey(b.Period, b.Subject))
+	k.live().Set(types.PendingLeaveKey(b.Period, b.Subject), []byte{1})
+	k.live().Delete(types.BondedKey(b.Period, b.Subject))
 	if idx, ok := k.depositIndexOf(b.Subject); ok {
 		k.BitClear(idx)
 		k.SetEB(idx, 0)
@@ -162,7 +162,7 @@ func (k *Keeper) StoredMembershipTxs(period uint64) [][]byte {
 	var out [][]byte
 	for _, per := range []uint64{period, 0} {
 		pref := types.PendingJoinPrefixForPeriod(per)
-		k.store.IteratePrefix(pref, func(key, value []byte) bool {
+		k.live().IteratePrefix(pref, func(key, value []byte) bool {
 			subj := key[len(pref):]
 			w := types.GetI64(value)
 			out = append(out, types.EncodeJoin(types.JoinBlob{Period: per, Subject: subj, Weight: w}))
@@ -202,7 +202,7 @@ func writeLastPrepare(pending, lnprSubjects int) {
 func (k *Keeper) applyQueuedMembership(period uint64, set []SubjectPower) []SubjectPower {
 	leave := map[string][]byte{}
 	var joins []SubjectPower
-	k.store.IteratePrefix(types.PendingLeavePrefixForPeriod(period), func(key, _ []byte) bool {
+	k.live().IteratePrefix(types.PendingLeavePrefixForPeriod(period), func(key, _ []byte) bool {
 		pref := types.PendingLeavePrefixForPeriod(period)
 		subj := append([]byte(nil), key[len(pref):]...)
 		leave[string(subj)] = subj

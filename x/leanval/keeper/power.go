@@ -23,7 +23,7 @@ type SubjectPower struct {
 func (k *Keeper) BondedSet(period uint64) []SubjectPower {
 	var out []SubjectPower
 	pref := types.BondedPrefixForPeriod(period)
-	k.store.IteratePrefix(pref, func(key, value []byte) bool {
+	k.live().IteratePrefix(pref, func(key, value []byte) bool {
 		subj := key[len(pref):]
 		rec := decodeRec(value)
 		sp := SubjectPower{Subject: append([]byte(nil), subj...)}
@@ -91,20 +91,20 @@ func decodeRec(v []byte) rec {
 
 // PutSubject registers a subject for P without an accepted proof (weight 0).
 func (k *Keeper) PutSubject(period uint64, subject []byte, claimedWeight int64) {
-	k.store.Set(types.BondedKey(period, subject), encodeRec(false, claimedWeight))
+	k.live().Set(types.BondedKey(period, subject), encodeRec(false, claimedWeight))
 }
 
 // AcceptProof marks a verified proof for (P, subject). Weight applies only after accept.
 // Also allocates a deposit-tree index and sets the participation bit (SoT).
 func (k *Keeper) AcceptProof(period uint64, subject []byte, weight int64) {
-	k.store.Set(types.BondedKey(period, subject), encodeRec(true, weight))
+	k.live().Set(types.BondedKey(period, subject), encodeRec(true, weight))
 	k.admitMember(subject, weight)
 }
 
 // ValidatorUpdates emits Comet VP from set bits + EB tree (not staking shares).
 func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
 	_ = period
-	usingBits := len(k.store.Get(types.BitfieldKey())) > 0 || k.nextDepositIndex() > 0
+	usingBits := len(k.live().Get(types.BitfieldKey())) > 0 || k.nextDepositIndex() > 0
 	var set []SubjectPower
 	if usingBits {
 		set = k.DebugSubjectsFromBits()
@@ -118,15 +118,15 @@ func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
 			continue
 		}
 		seen[string(s.Subject)] = struct{}{}
-		prev := types.GetI64(k.store.Get(types.LastPowerKey(s.Subject)))
+		prev := types.GetI64(k.live().Get(types.LastPowerKey(s.Subject)))
 		if prev == s.Weight && prev != 0 {
 			continue
 		}
 		ups = append(ups, valUpdate(s.Subject, s.Weight))
-		k.store.Set(types.LastPowerKey(s.Subject), types.PutI64(s.Weight))
+		k.live().Set(types.LastPowerKey(s.Subject), types.PutI64(s.Weight))
 	}
 	// Zero out last-period vals missing from this bonded set.
-	k.store.IteratePrefix([]byte{types.LastUpdatesPrefix}, func(key, value []byte) bool {
+	k.live().IteratePrefix([]byte{types.LastUpdatesPrefix}, func(key, value []byte) bool {
 		subj := key[1:]
 		if _, ok := seen[string(subj)]; ok {
 			return true
@@ -135,7 +135,7 @@ func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
 			return true
 		}
 		ups = append(ups, valUpdate(subj, 0))
-		k.store.Set(types.LastPowerKey(subj), types.PutI64(0))
+		k.live().Set(types.LastPowerKey(subj), types.PutI64(0))
 		return true
 	})
 	return ups
@@ -272,7 +272,7 @@ func (k *Keeper) knownSubjectSet(period uint64) map[string]struct{} {
 func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 	before := countSetBits(k)
 	if err := k.VerifyLNPR(blob); err != nil {
-		writeLastApply("VERIFY", err.Error(), before, before, len(blob.Subjects))
+		writeLastApply("VERIFY", err.Error(), before, before, len(blob.Subjects), k.hasCtx, k.sk != nil)
 		return err
 	}
 	// LNPR is not a replace-set of pubkeys. Bits stay unless a LEAV subject
@@ -289,12 +289,12 @@ func (k *Keeper) ApplyLNPR(blob types.LNPRBlob) error {
 		} else if len(s.Subject) > 0 {
 			k.AcceptProof(blob.Period, s.Subject, s.Weight)
 		}
-		k.store.Delete(types.PendingJoinKey(blob.Period, s.Subject))
-		k.store.Delete(types.PendingJoinKey(0, s.Subject))
+		k.live().Delete(types.PendingJoinKey(blob.Period, s.Subject))
+		k.live().Delete(types.PendingJoinKey(0, s.Subject))
 	}
 	k.syncObjectRoots()
 	after := countSetBits(k)
-	writeLastApply("OK", "", before, after, len(blob.Subjects))
+	writeLastApply("OK", "", before, after, len(blob.Subjects), k.hasCtx, k.sk != nil)
 	return nil
 }
 

@@ -10,15 +10,15 @@ import (
 // BondedSet is a debug view only.
 
 func (k *Keeper) nextDepositIndex() uint32 {
-	return types.GetU32(k.store.Get(types.NextDepositIndexKey()))
+	return types.GetU32(k.live().Get(types.NextDepositIndexKey()))
 }
 
 func (k *Keeper) setNextDepositIndex(n uint32) {
-	k.store.Set(types.NextDepositIndexKey(), types.PutU32(n))
+	k.live().Set(types.NextDepositIndexKey(), types.PutU32(n))
 }
 
 func (k *Keeper) Bitfield() []byte {
-	b := k.store.Get(types.BitfieldKey())
+	b := k.live().Get(types.BitfieldKey())
 	if len(b) == 0 {
 		return []byte{0}
 	}
@@ -56,7 +56,7 @@ func (k *Keeper) setBitfield(b []byte) {
 	if len(b) == 0 {
 		b = []byte{0}
 	}
-	k.store.Set(types.BitfieldKey(), append([]byte(nil), b...))
+	k.live().Set(types.BitfieldKey(), append([]byte(nil), b...))
 }
 
 func (k *Keeper) BitSet(idx uint32) {
@@ -89,7 +89,7 @@ func (k *Keeper) ORMergeBitfield(other []byte) {
 }
 
 func (k *Keeper) depositIndexOf(subject []byte) (uint32, bool) {
-	v := k.store.Get(types.DepositIndexKey(subject))
+	v := k.live().Get(types.DepositIndexKey(subject))
 	if len(v) < 5 {
 		return 0, false
 	}
@@ -101,7 +101,7 @@ func (k *Keeper) AllocateIndex(subject []byte) uint32 {
 		return idx
 	}
 	n := k.nextDepositIndex()
-	k.store.Set(types.DepositIndexKey(subject), types.DepositIndexBytes(n))
+	k.live().Set(types.DepositIndexKey(subject), types.DepositIndexBytes(n))
 	k.setNextDepositIndex(n + 1)
 	k.syncObjectRoots()
 	return n
@@ -118,12 +118,12 @@ func ebFromWeight(w int64) byte {
 }
 
 func (k *Keeper) SetEB(idx uint32, eb byte) {
-	k.store.Set(types.EBKey(idx), []byte{eb})
+	k.live().Set(types.EBKey(idx), []byte{eb})
 	k.syncObjectRoots()
 }
 
 func (k *Keeper) EBOf(idx uint32) byte {
-	v := k.store.Get(types.EBKey(idx))
+	v := k.live().Get(types.EBKey(idx))
 	if len(v) == 0 {
 		return 0
 	}
@@ -134,7 +134,7 @@ func (k *Keeper) admitMember(subject []byte, weight int64) uint32 {
 	idx := k.AllocateIndex(subject)
 	if weight > 0 {
 		// Do not overwrite an explicit EB tree byte (vp-from-bits tests).
-		if len(k.store.Get(types.EBKey(idx))) == 0 {
+		if len(k.live().Get(types.EBKey(idx))) == 0 {
 			k.SetEB(idx, ebFromWeight(weight))
 		}
 		k.BitSet(idx)
@@ -172,7 +172,7 @@ func (k *Keeper) syncObjectRoots() {
 
 func (k *Keeper) subjectByIndex(want uint32) []byte {
 	var found []byte
-	k.store.IteratePrefix([]byte{types.DepositIndexPrefix}, func(key, value []byte) bool {
+	k.live().IteratePrefix([]byte{types.DepositIndexPrefix}, func(key, value []byte) bool {
 		if len(value) < 5 {
 			return true
 		}

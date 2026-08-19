@@ -121,10 +121,10 @@ func (k *Keeper) mergePending(period uint64, set []SubjectPower) []types.Subject
 func (k *Keeper) dropUnlisted(period uint64, listed map[string]struct{}) {
 	pref := types.BondedPrefixForPeriod(period)
 	var del [][]byte
-	k.store.IteratePrefix(pref, func(key, _ []byte) bool {
+	k.live().IteratePrefix(pref, func(key, _ []byte) bool {
 		subj := key[len(pref):]
 		if _, ok := listed[string(subj)]; !ok {
-			if k.store.Get(types.PendingJoinKey(period, subj)) != nil || k.store.Get(types.PendingJoinKey(0, subj)) != nil {
+			if k.live().Get(types.PendingJoinKey(period, subj)) != nil || k.live().Get(types.PendingJoinKey(0, subj)) != nil {
 				return true
 			}
 			del = append(del, append([]byte(nil), key...))
@@ -132,6 +132,6 @@ func (k *Keeper) dropUnlisted(period uint64, listed map[string]struct{}) {
 		return true
 	})
 	for _, key := range del {
-		k.store.Delete(key)
+		k.live().Delete(key)
 	}
 }

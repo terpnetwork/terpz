@@ -53,16 +53,16 @@ func (k *Keeper) SetOwnsValset(v bool) {
 	k.ownsValset = v
 	if k.store != nil {
 		if v {
-			k.store.Set(types.OwnsValsetKey(), []byte{1})
+			k.live().Set(types.OwnsValsetKey(), []byte{1})
 		} else {
-			k.store.Set(types.OwnsValsetKey(), []byte{0})
+			k.live().Set(types.OwnsValsetKey(), []byte{0})
 		}
 	}
 }
 
 func (k *Keeper) OwnsValset() bool {
 	if k.store != nil {
-		if b := k.store.Get(types.OwnsValsetKey()); len(b) > 0 {
+		if b := k.live().Get(types.OwnsValsetKey()); len(b) > 0 {
 			return b[0] != 0
 		}
 	}
@@ -75,14 +75,27 @@ func (k *Keeper) SetPendingUpdates(u []abci.ValidatorUpdate) {
 
 func (k *Keeper) SetEndPeriod(p uint64) { k.endPeriod = p }
 
-func (k *Keeper) Store() Store { return k.store }
+func (k *Keeper) Store() Store { return k.live() }
+
+// live returns the KV bound to the current ABCI context when one is set.
+// Never cache ctx.KVStore across Prepare/Process/Finalize: a stale gaskv
+// writes into a discarded cache and the new roster does not commit.
+func (k *Keeper) live() Store {
+	if k.hasCtx && k.sk != nil {
+		return BindKV(k.sdkCtx, k.sk)
+	}
+	if k.store == nil {
+		k.store = NewMemStore()
+	}
+	return k.store
+}
 
 func (k *Keeper) SetGasMeter(g storetypes.GasMeter) { k.gas = g }
 
 // QueryBondedSet is a debug view. Membership SoT is deposit index + bitfield + EB
 // (SOURCES 1A/1B). Do not treat this as the bitfield or as Comet VP wiring.
 func (k *Keeper) QueryBondedSet(period uint64) []SubjectPower {
-	if k.nextDepositIndex() > 0 || len(k.store.Get(types.BitfieldKey())) > 0 {
+	if k.nextDepositIndex() > 0 || len(k.live().Get(types.BitfieldKey())) > 0 {
 		if bits := k.DebugSubjectsFromBits(); len(bits) > 0 {
 			return bits
 		}

@@ -9,7 +9,7 @@ func (k *Keeper) LastObjectRoots() []byte {
 	if k.store == nil {
 		return out
 	}
-	if b := k.store.Get(types.ObjectRootsKey()); len(b) > 0 {
+	if b := k.live().Get(types.ObjectRootsKey()); len(b) > 0 {
 		copy(out, b)
 	}
 	return out
@@ -19,5 +19,5 @@ func (k *Keeper) LastObjectRoots() []byte {
 func (k *Keeper) SetLastObjectRoots(roots []byte) {
 	out := make([]byte, types.ObjectRootsSize)
 	copy(out, roots)
-	k.store.Set(types.ObjectRootsKey(), out)
+	k.live().Set(types.ObjectRootsKey(), out)
 }

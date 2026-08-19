@@ -275,9 +275,11 @@ type lastApplyFile struct {
 	BitsBefore   int    `json:"bits_before"`
 	BitsAfter    int    `json:"bits_after"`
 	LNPRSubjects int    `json:"lnpr_subjects"`
+	Bound        bool   `json:"bound"`
+	HasKey       bool   `json:"has_key"`
 }
 
-func writeLastApply(status, errMsg string, before, after, nsubj int) {
+func writeLastApply(status, errMsg string, before, after, nsubj int, bound, hasKey bool) {
 	dir := membershipDir()
 	if dir == "" {
 		return
@@ -285,7 +287,7 @@ func writeLastApply(status, errMsg string, before, after, nsubj int) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	bz, err := json.Marshal(lastApplyFile{Status: status, Err: errMsg, BitsBefore: before, BitsAfter: after, LNPRSubjects: nsubj})
+	bz, err := json.Marshal(lastApplyFile{Status: status, Err: errMsg, BitsBefore: before, BitsAfter: after, LNPRSubjects: nsubj, Bound: bound, HasKey: hasKey})
 	if err != nil {
 		return
 	}
