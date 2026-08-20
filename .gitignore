@@ -94,3 +94,11 @@ oline-ui.md
 docs/
 .grok
 artifacts/
+# Lean Commonware FFI (force-track source; crates/* would ignore it)
+!crates/lean-cw-ffi/
+!crates/lean-cw-ffi/Cargo.toml
+!crates/lean-cw-ffi/Cargo.lock
+!crates/lean-cw-ffi/include/
+!crates/lean-cw-ffi/include/**
+!crates/lean-cw-ffi/src/
+!crates/lean-cw-ffi/src/**

@@ -310,6 +310,21 @@ func startInProcess(svrCtx *terpserver.Context, svrCfg serverconfig.Config, clie
 		// TODO: Generalize logic so that gRPC only is really in startStandAlone
 		svrCtx.Logger.Info("starting node in gRPC only mode; CometBFT is disabled")
 		svrCfg.GRPC.Enable = true
+	} else if useCommonware() {
+		svrCtx.Logger.Info("starting node with Commonware simplex; CometBFT is not started")
+		if err := startCommonware(ctx, cmtCfg, app, svrCtx, g); err != nil {
+			return err
+		}
+		if svrCfg.API.Enable || svrCfg.GRPC.Enable {
+			rpcclient, err := rpchttp.New(cmtCfg.RPC.ListenAddress, "/websocket")
+			if err != nil {
+				return err
+			}
+			clientCtx = clientCtx.WithClient(rpcclient)
+			app.RegisterTxService(clientCtx)
+			app.RegisterTendermintService(clientCtx)
+			app.RegisterNodeService(clientCtx, svrCfg)
+		}
 	} else {
 		svrCtx.Logger.Info("starting node with ABCI CometBFT in-process")
 		tmNode, cleanupFn, err := startCmtNode(ctx, cmtCfg, app, svrCtx)

@@ -1,0 +1,30 @@
+[package]
+name = "lean-cw-ffi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Commonware simplex C ABI for Lean AppState (Automaton=Prepare/Process, Reporter=slash/uptime)."
+license = "Apache-2.0"
+
+[lib]
+name = "lean_cw_ffi"
+crate-type = ["staticlib", "cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+bytes = "1"
+commonware-actor = { path = "../../../../crates/monorepo/actor" }
+commonware-codec = { path = "../../../../crates/monorepo/codec" }
+commonware-consensus = { path = "../../../../crates/monorepo/consensus" }
+commonware-cryptography = { path = "../../../../crates/monorepo/cryptography" }
+commonware-macros = { path = "../../../../crates/monorepo/macros" }
+commonware-p2p = { path = "../../../../crates/monorepo/p2p" }
+commonware-parallel = { path = "../../../../crates/monorepo/parallel" }
+commonware-runtime = { path = "../../../../crates/monorepo/runtime" }
+commonware-utils = { path = "../../../../crates/monorepo/utils" }
+futures = "0.3"
+libc = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+[dev-dependencies]

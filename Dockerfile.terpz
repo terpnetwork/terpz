@@ -1,4 +1,5 @@
 # Lean ICT image: binary is terpz (not terpd). Tag: terpnetwork/terp-core:terpz-lean
+# lean-cw-ffi is statically linked into terpz; no extra .so in this image.
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates libgcc libstdc++ libc6-compat
 COPY build/terpz /usr/local/bin/terpz

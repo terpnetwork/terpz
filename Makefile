@@ -148,10 +148,19 @@ build: build-check-version go.sum
 	fi
 
 # Lean worktree node only. Never install as terpd — keeps images/concerns separate.
+LEAN_CW_FFI_DIR ?= $(CURDIR)/crates/lean-cw-ffi
+LEAN_CW_LIB ?= $(LEAN_CW_FFI_DIR)/target/release/liblean_cw_ffi.a
+LEAN_CW_MUSL_DIR ?= $(LEAN_CW_FFI_DIR)/target-musl/aarch64-unknown-linux-musl/release
+LEAN_CW_MUSL_LIB ?= $(LEAN_CW_MUSL_DIR)/liblean_cw_ffi.a
+
+.PHONY: lean-cw-ffi
+lean-cw-ffi:
+	cargo build --release --manifest-path $(LEAN_CW_FFI_DIR)/Cargo.toml
+
 .PHONY: terpz
-terpz: build-check-version go.sum
+terpz: lean-cw-ffi build-check-version go.sum
 	mkdir -p $(BUILDDIR)/
-	GOWORK=off go build -mod=readonly $(BUILD_FLAGS) -ldflags '$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz' -o $(BUILDDIR)/terpz $(GO_MODULE)/cmd/terpd
+	CGO_ENABLED=1 CGO_LDFLAGS="-L$(LEAN_CW_FFI_DIR)/target/release" GOWORK=off go build -mod=readonly $(BUILD_FLAGS) -ldflags '$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz' -o $(BUILDDIR)/terpz $(GO_MODULE)/cmd/terpd
 
 ########################################
 ### Tools & dependencies (go-mod-cache, go.sum, draw-deps: scripts/makefiles/deps.mk)
@@ -178,12 +187,14 @@ docker-terpz: terpz
 WASMVM_MUSLC_A ?= $(CURDIR)/crates/zk-wasmvm/internal/api/libwasmvm_muslc.aarch64.a
 terpz-linux: build-check-version go.sum
 	@test -f $(WASMVM_MUSLC_A) || (echo "missing $(WASMVM_MUSLC_A)"; exit 1)
+	@test -f $(LEAN_CW_MUSL_LIB) || (echo "missing musl $(LEAN_CW_MUSL_LIB)"; exit 1)
 	mkdir -p $(BUILDDIR)/
 	docker run --rm --platform linux/arm64 \
 		-v /Users/returniflost/abstract/terp-core:/Users/returniflost/abstract/terp-core \
 		-w $(CURDIR) \
 		-e CGO_ENABLED=1 -e GOOS=linux -e GOARCH=arm64 -e GOWORK=off \
 		-e LEDGER_ENABLED=false \
+		-e CGO_LDFLAGS="-L$(LEAN_CW_MUSL_DIR)" \
 		golang:1.25-alpine \
 		sh -c 'apk add --no-cache gcc musl-dev linux-headers git \
 		&& go build -mod=readonly -tags "netgo muslc" \
