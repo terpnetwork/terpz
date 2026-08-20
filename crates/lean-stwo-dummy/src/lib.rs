@@ -315,6 +315,12 @@ mod ssle;
 #[cfg(feature = "real-stwo")]
 pub use ssle::{prove_ssle, ssle_ticket, verify_ssle, SSLE_KIND, SSLE_PI_LEN, TICKET_LEN};
 
+#[cfg(feature = "real-stwo")]
+mod daily;
+
+#[cfg(feature = "real-stwo")]
+pub use daily::{daily_key, prove_daily, verify_daily, DAILY_KIND, DAILY_PI_LEN, DAY_KEY_LEN};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -586,6 +592,27 @@ mod tests {
         let mut bad = proof.clone();
         bad[proof.len() / 2] ^= 1;
         assert!(crate::verify_ssle(&bad, 3, 42, &ticket).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_daily_key_not_identity_and_dummy_fails() {
+        let identity = [0xcd; 32];
+        let prev = [0u8; 32];
+        let (key, proof) = crate::prove_daily(7, &identity, &prev).expect("prove");
+        crate::verify_daily(&proof, 7, &key, &prev).expect("verify");
+        assert_ne!(&key[..], &identity[..]);
+        assert!(!proof.windows(4).any(|w| w == b"DSTW"));
+        assert_eq!(&proof[0..4], crate::STWO_MAGIC);
+        assert_eq!(proof[4], crate::CIRCUIT_TYPE_STWO);
+        assert_eq!(proof[5], crate::CURVE_TYPE_M31);
+        assert_eq!(&proof[6..10], crate::DAILY_KIND);
+        assert!(crate::verify_daily(b"DSTWDSTW", 7, &key, &prev).is_err());
+        let mut bad = proof.clone();
+        bad[proof.len() / 2] ^= 1;
+        assert!(crate::verify_daily(&bad, 7, &key, &prev).is_err());
+        let other = crate::daily_key(8, &identity);
+        assert_ne!(key, other);
     }
 
     #[cfg(feature = "real-stwo")]

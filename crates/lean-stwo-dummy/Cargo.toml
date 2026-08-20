@@ -43,3 +43,8 @@ required-features = ["real-stwo"]
 name = "lean-ssle"
 path = "src/bin/ssle_air.rs"
 required-features = ["real-stwo"]
+
+[[bin]]
+name = "lean-daily-keys"
+path = "src/bin/daily_air.rs"
+required-features = ["real-stwo"]

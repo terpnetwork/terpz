@@ -31,6 +31,8 @@ const (
 	NextDepositIndexPrefix byte = 0x12
 	// EBPrefix: deposit index -> 1-byte effective balance (separate tree). SOURCES 1B.
 	EBPrefix byte = 0x13
+	// DailyKeyPrefix: period(8 BE) -> 32-byte re-anon day key (LEAN-6). Not BondedSet power.
+	DailyKeyPrefix byte = 0x14
 )
 
 // ObjectRootsSize is deposit(32) || bitfield(32) || eb(32).
@@ -119,6 +121,13 @@ func DepositIndexBytes(index uint32) []byte {
 func PendingLeavePrefixForPeriod(period uint64) []byte {
 	k := make([]byte, 1+8)
 	k[0] = PendingLeavePrefix
+	putU64(k[1:9], period)
+	return k
+}
+
+func DailyKeyKey(period uint64) []byte {
+	k := make([]byte, 1+8)
+	k[0] = DailyKeyPrefix
 	putU64(k[1:9], period)
 	return k
 }
