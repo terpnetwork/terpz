@@ -59,6 +59,9 @@ func (k *Keeper) WrapPrepareProposal(inner PrepareHandler) PrepareHandler {
 			req.Height, pending, len(blob.Subjects), len(incoming))
 		writeLastPrepare(pending, len(blob.Subjects))
 		txs = injectLNPR(txs, lnpr)
+		if ssle := k.buildSSLE(period, req.Height, req.ProposerAddress); len(ssle) > 0 {
+			txs = injectSSLE(txs, ssle)
+		}
 		return &abci.ResponsePrepareProposal{Txs: txs}, nil
 	}
 }
@@ -69,6 +72,11 @@ func (k *Keeper) WrapProcessProposal(inner ProcessHandler) ProcessHandler {
 	return func(req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		if err := k.checkLNPR(req.Height, req.Txs); err != nil {
 			fmt.Fprintf(os.Stderr, "leanval: Process REJECT on unverifiable LNPR: %v\n", err)
+			writeLastProcess("REJECT", err.Error(), req.Height, req.Txs)
+			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+		}
+		if err := k.checkSSLE(req.Height, req.Txs); err != nil {
+			fmt.Fprintf(os.Stderr, "leanval: Process REJECT on unverifiable SSLE: %v\n", err)
 			writeLastProcess("REJECT", err.Error(), req.Height, req.Txs)
 			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 		}
@@ -177,6 +185,45 @@ func mergeMembershipFromComet(reqTxs, proposed [][]byte) [][]byte {
 		seen[string(tx)] = struct{}{}
 	}
 	return out
+}
+
+func injectSSLE(txs [][]byte, ssle []byte) [][]byte {
+	out := make([][]byte, 0, len(txs)+1)
+	for _, tx := range txs {
+		if types.HasPrefix(tx, types.PrefixSSLE) {
+			continue
+		}
+		out = append(out, tx)
+	}
+	idx := 0
+	for i, tx := range out {
+		if types.HasPrefix(tx, types.PrefixLNPR) {
+			idx = i + 1
+			break
+		}
+		if types.HasPrefix(tx, types.PrefixHMVE) {
+			idx = i + 1
+		}
+	}
+	out = append(out, nil)
+	copy(out[idx+1:], out[idx:])
+	out[idx] = ssle
+	return out
+}
+
+func (k *Keeper) checkSSLE(height int64, txs [][]byte) error {
+	blob, _, ok := types.FindSSLE(txs)
+	if !ok {
+		return nil
+	}
+	want := types.PeriodFromHeight(height)
+	if blob.Period != want {
+		return fmt.Errorf("leanval: SSLE period %d != height period %d", blob.Period, want)
+	}
+	if blob.Height != height {
+		return fmt.Errorf("leanval: SSLE height %d != %d", blob.Height, height)
+	}
+	return VerifySSLEProof(blob.Proof, blob.Period, blob.Height, blob.Ticket)
 }
 
 func injectLNPR(txs [][]byte, lnpr []byte) [][]byte {

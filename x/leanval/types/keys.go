@@ -40,6 +40,7 @@ const ObjectRootsSize = 96
 var (
 	PrefixHMVE = []byte("HMVE") // 0x48 0x4D 0x56 0x45
 	PrefixLNPR = []byte("LNPR") // 0x4C 0x4E 0x50 0x52
+	PrefixSSLE = []byte("SSLE") // 0x53 0x53 0x4C 0x45
 )
 
 // BlocksPerPeriod is the height stub for a 1-hour period.

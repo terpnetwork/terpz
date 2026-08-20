@@ -3,8 +3,8 @@ package leanval
 import (
 	"context"
 
-	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 
 	"github.com/terpnetwork/terp-core/v6/x/leanval/keeper"
 )
@@ -15,10 +15,11 @@ type DistrAppModule struct {
 	distr.AppModule
 	lean  *keeper.Keeper
 	alloc keeper.TokenAllocator
+	cons  ConsLookup
 }
 
-func WrapDistribution(am distr.AppModule, lean *keeper.Keeper, alloc keeper.TokenAllocator) DistrAppModule {
-	return DistrAppModule{AppModule: am, lean: lean, alloc: alloc}
+func WrapDistribution(am distr.AppModule, lean *keeper.Keeper, alloc keeper.TokenAllocator, cons ConsLookup) DistrAppModule {
+	return DistrAppModule{AppModule: am, lean: lean, alloc: alloc, cons: cons}
 }
 
 func (am DistrAppModule) BeginBlock(ctx context.Context) error {
@@ -27,5 +28,9 @@ func (am DistrAppModule) BeginBlock(ctx context.Context) error {
 	}
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	am.lean.BindContext(sdkCtx)
-	return am.lean.AllocateDelegatorFees(sdkCtx, am.alloc)
+	alloc := am.alloc
+	if am.cons != nil {
+		alloc = skipUnknownAlloc{inner: am.alloc, cons: am.cons}
+	}
+	return am.lean.AllocateDelegatorFees(sdkCtx, alloc)
 }

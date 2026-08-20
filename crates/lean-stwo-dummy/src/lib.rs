@@ -309,6 +309,12 @@ pub use valset::{prove_valset, valset_instance_bytes, verify_valset, VALSET_STAT
 #[cfg(feature = "real-stwo")]
 pub use fold::{prove_fold, reject_dummy_n, verify_fold, FOLD_KIND};
 
+#[cfg(feature = "real-stwo")]
+mod ssle;
+
+#[cfg(feature = "real-stwo")]
+pub use ssle::{prove_ssle, ssle_ticket, verify_ssle, SSLE_KIND, SSLE_PI_LEN, TICKET_LEN};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,6 +571,21 @@ mod tests {
         let i = proof.len() / 2;
         proof[i] ^= 1;
         assert!(crate::verify_fold(&proof, bf, dep, eb).is_err());
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_ssle_ticket_not_proposer_and_dummy_fails() {
+        let proposer = [0x11u8; 32];
+        let (ticket, proof) = crate::prove_ssle(3, 42, &proposer).expect("prove");
+        assert_ne!(&ticket, &proposer, "ticket must not be the proposer id");
+        crate::verify_ssle(&proof, 3, 42, &ticket).expect("verify");
+        assert!(!proof.windows(4).any(|w| w == b"DSTW"));
+        assert_eq!(&proof[6..10], crate::SSLE_KIND);
+        assert!(crate::verify_ssle(b"DSTWDSTW", 3, 42, &ticket).is_err());
+        let mut bad = proof.clone();
+        bad[proof.len() / 2] ^= 1;
+        assert!(crate::verify_ssle(&bad, 3, 42, &ticket).is_err());
     }
 
     #[cfg(feature = "real-stwo")]

@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"sort"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -102,6 +103,10 @@ func (k *Keeper) AcceptProof(period uint64, subject []byte, weight int64) {
 }
 
 // ValidatorUpdates emits Comet VP from set bits + EB tree (not staking shares).
+//
+// First Comet admission of a subject while a live set already exists is power 1.
+// A silent JOIN must not take remaining VP to ≤2/3 of the new total. Power is
+// never auto-raised later (EB may still record the claimed JOIN weight).
 func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
 	_ = period
 	usingBits := len(k.live().Get(types.BitfieldKey())) > 0 || k.nextDepositIndex() > 0
@@ -112,18 +117,41 @@ func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
 		set = k.BondedSetOrCarry(period)
 	}
 	seen := map[string]struct{}{}
+	var existingTotal int64
+	for _, s := range set {
+		if len(s.Subject) != 32 {
+			continue
+		}
+		// Bit-set members stay in `seen` so we never zero them just because
+		// HasProof/weight is briefly 0 during JOIN Apply.
+		seen[string(s.Subject)] = struct{}{}
+		prev := types.GetI64(k.live().Get(types.LastPowerKey(s.Subject)))
+		if prev > 0 {
+			existingTotal += prev
+		}
+	}
 	var ups []abci.ValidatorUpdate
 	for _, s := range set {
+		if len(s.Subject) != 32 {
+			continue
+		}
 		if usingBits && (!s.HasProof || s.Weight == 0) {
 			continue
 		}
-		seen[string(s.Subject)] = struct{}{}
+		w := s.Weight
 		prev := types.GetI64(k.live().Get(types.LastPowerKey(s.Subject)))
-		if prev == s.Weight && prev != 0 {
+		if prev == 0 {
+			if existingTotal > 0 && w > 1 {
+				w = 1
+			}
+		} else if prev == w {
+			continue
+		} else if w > prev {
+			// Do not auto-raise (would turn a 1-VP JOIN into equal power).
 			continue
 		}
-		ups = append(ups, valUpdate(s.Subject, s.Weight))
-		k.live().Set(types.LastPowerKey(s.Subject), types.PutI64(s.Weight))
+		ups = append(ups, valUpdate(s.Subject, w))
+		k.live().Set(types.LastPowerKey(s.Subject), types.PutI64(w))
 	}
 	// Zero out last-period vals missing from this bonded set.
 	k.live().IteratePrefix([]byte{types.LastUpdatesPrefix}, func(key, value []byte) bool {
@@ -134,10 +162,15 @@ func (k *Keeper) ValidatorUpdates(period uint64) []abci.ValidatorUpdate {
 		if types.GetI64(value) == 0 {
 			return true
 		}
-		ups = append(ups, valUpdate(subj, 0))
+		if len(subj) == 32 {
+			ups = append(ups, valUpdate(subj, 0))
+		}
 		k.live().Set(types.LastPowerKey(subj), types.PutI64(0))
 		return true
 	})
+	if len(ups) > 0 {
+		fmt.Fprintf(os.Stderr, "leanval: ValidatorUpdates n=%d existing=%d\n", len(ups), existingTotal)
+	}
 	return ups
 }
 

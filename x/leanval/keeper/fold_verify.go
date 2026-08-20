@@ -62,6 +62,13 @@ func VerifySameStatementFold(proof []byte, pairs []string) error {
 			return fmt.Errorf("leanval: fold public inputs != EB root")
 		}
 	}
+	inst := []byte{}
+	if len(proof) >= 10+types.ObjectRootsSize {
+		inst = proof[10 : 10+types.ObjectRootsSize]
+	}
+	if err := verifyStwoInProcess(proof, inst); err == nil {
+		return nil
+	}
 	bin := foldBin()
 	if bin == "" {
 		return fmt.Errorf("leanval: lean-stwo-fold not on PATH (not cargo)")

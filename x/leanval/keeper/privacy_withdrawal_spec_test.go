@@ -139,4 +139,3 @@ func TestPrivacy_HashOrderIsNotSecretThenAddr(t *testing.T) {
 		t.Fatal("commit must be SHA256(addr||secret), not SHA256(secret||addr)")
 	}
 }
-

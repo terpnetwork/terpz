@@ -41,7 +41,8 @@ func (k *Keeper) verifyProof(proof, instances []byte) error {
 
 // SudoProofInstanceVerifyMsg is the JSON the cw-lean-verifier sudo handler
 // must accept. The contract calls the host module instance API:
-//   deps.api.proof_instance_verify(zkid, proof, instances)
+//
+//	deps.api.proof_instance_verify(zkid, proof, instances)
 type SudoProofInstanceVerifyMsg struct {
 	ProofInstanceVerify struct {
 		ZkID      uint64 `json:"zkid"`

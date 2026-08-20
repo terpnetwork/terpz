@@ -17,6 +17,9 @@ func WrapTxDecoder(inner sdk.TxDecoder) sdk.TxDecoder {
 		if err := types.RejectMempoolLNPR(txBytes); err != nil {
 			return nil, err
 		}
+		if err := types.RejectMempoolSSLE(txBytes); err != nil {
+			return nil, err
+		}
 		if types.IsMembershipTx(txBytes) {
 			if j, ok := types.DecodeJoin(txBytes); ok {
 				if err := types.ValidateJoin(j); err != nil {
@@ -29,7 +32,7 @@ func WrapTxDecoder(inner sdk.TxDecoder) sdk.TxDecoder {
 			} else {
 				return nil, types.ErrMempoolLNPR
 			}
-				return types.MembershipTx{Raw: append([]byte(nil), txBytes...)}, nil
+			return types.MembershipTx{Raw: append([]byte(nil), txBytes...)}, nil
 		}
 		return inner(txBytes)
 	}

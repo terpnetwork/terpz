@@ -172,12 +172,26 @@ distclean: clean
 docker-terpz: terpz
 	docker build -f Dockerfile.terpz -t terpnetwork/terp-core:terpz-lean .
 
-# Linux/arm64 terpz for Alpine ICT (host is darwin/arm64). Ledger off.
+# Linux/arm64 terpz for Alpine ICT. CGO muslc is required: zk-wasmd
+# keeper_no_cgo does not match NewKeeper, and VerifyStwoHost lives in libwasmvm.
 .PHONY: terpz-linux docker-terpz-linux
+WASMVM_MUSLC_A ?= $(CURDIR)/crates/zk-wasmvm/internal/api/libwasmvm_muslc.aarch64.a
 terpz-linux: build-check-version go.sum
+	@test -f $(WASMVM_MUSLC_A) || (echo "missing $(WASMVM_MUSLC_A)"; exit 1)
 	mkdir -p $(BUILDDIR)/
-	LEDGER_ENABLED=false CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOWORK=off 		go build -mod=readonly -tags netgo 		-ldflags '$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz' 		-o $(BUILDDIR)/terpz-linux $(GO_MODULE)/cmd/terpd
+	docker run --rm --platform linux/arm64 \
+		-v /Users/returniflost/abstract/terp-core:/Users/returniflost/abstract/terp-core \
+		-w $(CURDIR) \
+		-e CGO_ENABLED=1 -e GOOS=linux -e GOARCH=arm64 -e GOWORK=off \
+		-e LEDGER_ENABLED=false \
+		golang:1.25-alpine \
+		sh -c 'apk add --no-cache gcc musl-dev linux-headers git \
+		&& go build -mod=readonly -tags "netgo muslc" \
+		-ldflags "$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz -linkmode=external -extldflags \"-Wl,-z,muldefs -static\"" \
+		-o $(BUILDDIR)/terpz-linux $(GO_MODULE)/cmd/terpd'
+	cp $(BUILDDIR)/terpz-linux $(BUILDDIR)/terpz
 
 docker-terpz-linux: terpz-linux
-	cp $(BUILDDIR)/terpz-linux $(BUILDDIR)/terpz
+	@test -x $(BUILDDIR)/lean-stwo-fold || (echo "missing musl $(BUILDDIR)/lean-stwo-fold"; exit 1)
+	@test -x $(BUILDDIR)/lean-ssle || (echo "missing musl $(BUILDDIR)/lean-ssle"; exit 1)
 	docker build --platform linux/arm64 -f Dockerfile.terpz -t terpnetwork/terp-core:terpz-lean .
