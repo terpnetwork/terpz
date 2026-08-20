@@ -21,15 +21,20 @@ type EngineApp interface {
 
 // Driver maps simplex Automaton/Reporter onto ABCI Prepare/Process/Finalize.
 // Dummy DSTW still fails in Process. JOIN/LEAV stay LNPR injects.
+type StoreQuery func(path string, data []byte) []byte
+
 type Driver struct {
-	mu        sync.Mutex
-	app       EngineApp
-	proposer  []byte
-	chainID   string
-	next      int64
-	committee int
-	lastSigs  int
-	mempool   [][]byte
+	mu         sync.Mutex
+	app        EngineApp
+	proposer   []byte
+	chainID    string
+	next       int64
+	committee  int
+	lastSigs   int
+	mempool    [][]byte
+	committed  map[int64][]byte
+	storeQuery StoreQuery
+	onCommit   func(int64)
 }
 
 func NewDriver(app EngineApp, chainID string, proposer []byte) *Driver {
@@ -52,6 +57,18 @@ func (d *Driver) SetCommittee(n int) {
 	}
 	d.mu.Lock()
 	d.committee = n
+	d.mu.Unlock()
+}
+
+func (d *Driver) SetStoreQuery(q StoreQuery) {
+	d.mu.Lock()
+	d.storeQuery = q
+	d.mu.Unlock()
+}
+
+func (d *Driver) SetOnCommit(fn func(int64)) {
+	d.mu.Lock()
+	d.onCommit = fn
 	d.mu.Unlock()
 }
 
@@ -145,10 +162,22 @@ func (d *Driver) Report(kind uint32, epoch, view uint64, digest []byte) {
 
 func (d *Driver) Finalize(_epoch, _view uint64, digest, payload []byte) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	p, err := DecodePayload(payload)
 	if err != nil {
+		d.mu.Unlock()
 		return
+	}
+	if d.next > 0 && p.Height < d.next {
+		d.mu.Unlock()
+		return
+	}
+	if d.next > 0 && p.Height != d.next {
+		d.mu.Unlock()
+		return
+	}
+	if len(digest) != 32 {
+		sum := sha256.Sum256(payload)
+		digest = sum[:]
 	}
 	_, err = d.app.FinalizeBlock(&abci.RequestFinalizeBlock{
 		Txs:             p.Txs,
@@ -158,9 +187,11 @@ func (d *Driver) Finalize(_epoch, _view uint64, digest, payload []byte) {
 		ProposerAddress: d.proposer,
 	})
 	if err != nil {
+		d.mu.Unlock()
 		return
 	}
 	if _, err := d.app.Commit(); err != nil {
+		d.mu.Unlock()
 		return
 	}
 	included := make(map[[32]byte]struct{}, len(p.Txs))
@@ -177,8 +208,45 @@ func (d *Driver) Finalize(_epoch, _view uint64, digest, payload []byte) {
 	if d.committee > 0 {
 		d.lastSigs = d.committee
 	}
+	if d.committed == nil {
+		d.committed = make(map[int64][]byte)
+	}
+	d.committed[p.Height] = append([]byte(nil), payload...)
 	d.next = p.Height + 1
 	setEngineHeight(uint64(p.Height))
+	cb := d.onCommit
+	h := p.Height
+	d.mu.Unlock()
+	if cb != nil {
+		cb(h)
+	}
+}
+
+func (d *Driver) ApplyRemote(payload []byte) {
+	if len(payload) == 0 {
+		return
+	}
+	sum := sha256.Sum256(payload)
+	d.Finalize(0, 0, sum[:], payload)
+}
+
+func (d *Driver) PayloadAt(h int64) (payload []byte, height int64, sigs int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if h <= 0 {
+		h = d.next - 1
+	}
+	if h < 1 {
+		return nil, 0, d.lastSigs
+	}
+	if d.committed != nil {
+		payload = append([]byte(nil), d.committed[h]...)
+	}
+	sigs = d.lastSigs
+	if sigs == 0 {
+		sigs = d.committee
+	}
+	return payload, h, sigs
 }
 
 func (d *Driver) CheckTx(tx []byte) (*abci.ResponseCheckTx, error) {

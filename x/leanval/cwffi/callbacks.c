@@ -7,6 +7,6 @@ void lean_cw_fill_callbacks(lean_cw_callbacks *c, void *user) {
 	c->certify = (lean_cw_certify_fn)goLeanCwCertify;
 	c->report = (lean_cw_report_fn)goLeanCwReport;
 	c->finalize = (lean_cw_finalize_fn)goLeanCwFinalize;
-	c->participants = 0;
+	c->participants = (lean_cw_participants_fn)goLeanCwParticipants;
 	c->user = user;
 }

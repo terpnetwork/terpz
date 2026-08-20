@@ -27,6 +27,7 @@ pub struct lean_cw_cfg {
     pub namespace: *const std::os::raw::c_char,
     pub participants: *const u8,
     pub participants_len: usize,
+    pub epoch: u64,
 }
 
 unsafe impl Send for lean_cw_cfg {}

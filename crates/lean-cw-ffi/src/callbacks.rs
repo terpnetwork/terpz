@@ -148,6 +148,18 @@ impl RawCallbacks {
             }
         }
     }
+
+    /// BondedSet bits=1 pubkeys (concatenated 32-byte ed25519). None if unset.
+    pub fn participants(&self, epoch: u64) -> Option<Vec<u8>> {
+        let f = self.participants?;
+        let mut pk_out: *mut u8 = std::ptr::null_mut();
+        let mut pk_len: usize = 0;
+        let rc = unsafe { f(self.user, epoch, &mut pk_out, &mut pk_len) };
+        if rc != 0 {
+            return None;
+        }
+        Some(copy_and_free(pk_out, pk_len))
+    }
 }
 
 fn copy_and_free(ptr: *mut u8, len: usize) -> Vec<u8> {

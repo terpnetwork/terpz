@@ -88,10 +88,12 @@ typedef struct lean_cw_cfg {
     const char *namespace;
     const uint8_t *participants;
     size_t participants_len;
+    uint64_t epoch;
 } lean_cw_cfg;
 
 int lean_cw_start(const lean_cw_cfg *cfg, const lean_cw_callbacks *cb);
 int lean_cw_stop(void);
+int lean_cw_running(void);
 uint64_t lean_cw_height(void);
 uint64_t lean_cw_epoch(void);
 void lean_cw_set_height(uint64_t height);

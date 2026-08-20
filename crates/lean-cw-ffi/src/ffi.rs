@@ -49,6 +49,7 @@ pub extern "C" fn lean_cw_start(
         storage_dir,
         namespace,
         participants,
+        epoch: cfg.epoch,
     };
 
     let _ = tracing_subscriber::fmt()
@@ -67,9 +68,21 @@ pub extern "C" fn lean_cw_start(
         })
         .expect("spawn lean-cw-ffi thread");
 
-    // Give the runner a moment to set RUNNING.
-    for _ in 0..50 {
+    // Give the runner a moment to set RUNNING (fails fast if not in set).
+    for _ in 0..100 {
         if RUNNING.load(Ordering::SeqCst) {
+            return crate::LEAN_CW_OK;
+        }
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    crate::LEAN_CW_ERR
+}
+
+#[no_mangle]
+pub extern "C" fn lean_cw_stop() -> i32 {
+    engine::request_stop();
+    for _ in 0..200 {
+        if !RUNNING.load(Ordering::SeqCst) {
             break;
         }
         thread::sleep(std::time::Duration::from_millis(20));
@@ -78,9 +91,12 @@ pub extern "C" fn lean_cw_start(
 }
 
 #[no_mangle]
-pub extern "C" fn lean_cw_stop() -> i32 {
-    engine::request_stop();
-    crate::LEAN_CW_OK
+pub extern "C" fn lean_cw_running() -> i32 {
+    if RUNNING.load(Ordering::SeqCst) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]

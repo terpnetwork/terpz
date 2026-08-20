@@ -3,10 +3,16 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtcfg "github.com/cometbft/cometbft/config"
@@ -17,6 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/terpnetwork/terp-core/v6/x/leanval/cwffi"
+	leanvaltypes "github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
 func useCommonware() bool {
@@ -45,6 +52,19 @@ func skipCommonwareEngine(pv *pvm.FilePV, participants []byte) bool {
 	return true
 }
 
+type cwEngine struct {
+	mu      sync.Mutex
+	pv      *pvm.FilePV
+	seed    []byte
+	listen  string
+	boot    string
+	storage string
+	drv     *cwffi.Driver
+	app     types.Application
+	log     interface{ Info(string, ...interface{}) }
+	epoch   uint64
+}
+
 func startCommonware(
 	ctx context.Context,
 	cfg *cmtcfg.Config,
@@ -68,17 +88,17 @@ func startCommonware(
 		return err
 	}
 
-	var participants []byte
+	var genesisPks []byte
 	for _, v := range doc.Validators {
 		b := v.PubKey.Bytes()
 		if len(b) != 32 {
 			continue
 		}
-		participants = append(participants, b...)
+		genesisPks = append(genesisPks, b...)
 	}
-	if len(participants) == 0 {
+	if len(genesisPks) == 0 {
 		if pk, err := pv.GetPubKey(); err == nil {
-			participants = append(participants, pk.Bytes()...)
+			genesisPks = append(genesisPks, pk.Bytes()...)
 		}
 	}
 
@@ -96,33 +116,271 @@ func startCommonware(
 	}
 
 	drv := cwffi.NewDriver(app, doc.ChainID, []byte(pv.GetAddress()))
-	drv.SetCommittee(len(participants) / 32)
+	drv.SetStoreQuery(func(path string, data []byte) []byte {
+		type querier interface {
+			Query(context.Context, *abci.RequestQuery) (*abci.ResponseQuery, error)
+		}
+		q, ok := app.(querier)
+		if !ok {
+			return nil
+		}
+		resp, err := q.Query(context.Background(), &abci.RequestQuery{Path: path, Data: data, Prove: false})
+		if err != nil || resp == nil {
+			return nil
+		}
+		return resp.Value
+	})
 
-	if skipCommonwareEngine(pv, participants) {
-		svrCtx.Logger.Info("Commonware simplex skipped (full node / not in genesis participants)")
+	eng := &cwEngine{
+		pv:      pv,
+		seed:    seed,
+		listen:  listen,
+		boot:    boot,
+		storage: storage,
+		drv:     drv,
+		app:     app,
+		log:     svrCtx.Logger,
+	}
+
+	pks := drv.Participants(0)
+	if len(pks) == 0 {
+		pks = genesisPks
+	}
+	drv.SetCommittee(len(pks) / 32)
+
+	rotateCh := make(chan uint64, 4)
+	drv.SetOnCommit(func(h int64) {
+		cur := leanvaltypes.PeriodFromHeight(h)
+		next := leanvaltypes.PeriodFromHeight(h + 1)
+		if next != cur {
+			select {
+			case rotateCh <- next:
+			default:
+			}
+		}
+	})
+
+	if skipCommonwareEngine(pv, pks) {
+		svrCtx.Logger.Info("Commonware simplex skipped (not in BondedSet participants); catching up AppState")
+		go catchupLoop(ctx, drv)
 	} else {
-		svrCtx.Logger.Info("starting Commonware simplex (Comet consensus disabled)", "listen", listen)
-		if err := cwffi.Start(drv, cwffi.Config{
-			PrivateKey:    seed,
-			Listen:        listen,
-			Bootstrappers: boot,
-			StorageDir:    storage,
-			Namespace:     "lean-terpz",
-			Participants:  participants,
-		}); err != nil {
+		svrCtx.Logger.Info("starting Commonware simplex (Comet consensus disabled)", "listen", listen, "epoch", uint64(0))
+		if err := eng.startEpoch(0, pks); err != nil {
 			return err
 		}
-		g.Go(func() error {
-			<-ctx.Done()
-			cwffi.Stop()
-			return nil
-		})
 	}
+
 	if err := cwffi.ServeRPC(cfg.RPC.ListenAddress, drv); err != nil {
 		cwffi.Stop()
 		return err
 	}
+
+	g.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				cwffi.Stop()
+				return nil
+			case ep := <-rotateCh:
+				if err := eng.rotate(ep); err != nil {
+					svrCtx.Logger.Info("lean-cw epoch rotate", "epoch", ep, "err", err.Error())
+				}
+			}
+		}
+	})
 	return nil
+}
+
+func (e *cwEngine) startEpoch(epoch uint64, pks []byte) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if cwffi.Running() {
+		cwffi.Stop()
+	}
+	if len(pks) == 0 {
+		pks = e.drv.Participants(epoch)
+	}
+	if skipCommonwareEngine(e.pv, pks) {
+		return fmt.Errorf("local pubkey not in BondedSet for epoch %d", epoch)
+	}
+	e.drv.SetCommittee(len(pks) / 32)
+	dir := filepath.Join(e.storage, fmt.Sprintf("epoch-%d", epoch))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	var last error
+	for i := 0; i < 15; i++ {
+		last = cwffi.Start(e.drv, cwffi.Config{
+			PrivateKey:    e.seed,
+			Listen:        e.listen,
+			Bootstrappers: e.boot,
+			StorageDir:    dir,
+			Namespace:     "lean-terpz",
+			Participants:  pks,
+			Epoch:         epoch,
+		})
+		if last == nil {
+			e.epoch = epoch
+			e.log.Info("Commonware simplex engine started", "epoch", epoch, "n", len(pks)/32)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+		if cwffi.Running() {
+			cwffi.Stop()
+		}
+	}
+	return last
+}
+
+func (e *cwEngine) rotate(epoch uint64) error {
+	e.mu.Lock()
+	cur := e.epoch
+	e.mu.Unlock()
+	if epoch <= cur && cwffi.Running() {
+		return nil
+	}
+	pks := e.drv.Participants(epoch)
+	if skipCommonwareEngine(e.pv, pks) {
+		e.log.Info("epoch boundary: still not in BondedSet", "epoch", epoch)
+		return nil
+	}
+	e.log.Info("epoch boundary: (re)starting simplex", "epoch", epoch, "n", len(pks)/32)
+	return e.startEpoch(epoch, pks)
+}
+
+func catchupURL() string {
+	if u := strings.TrimSpace(os.Getenv("LEAN_CW_CATCHUP")); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	boot := os.Getenv("LEAN_CW_BOOTSTRAPPERS")
+	for _, part := range strings.Split(boot, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		hostport := part
+		if i := strings.IndexByte(part, '@'); i >= 0 {
+			hostport = part[i+1:]
+		}
+		host := hostport
+		if i := strings.LastIndexByte(hostport, ':'); i >= 0 {
+			host = hostport[:i]
+		}
+		if host != "" {
+			return "http://" + host + ":26657"
+		}
+	}
+	return ""
+}
+
+func catchupLoop(ctx context.Context, drv *cwffi.Driver) {
+	base := catchupURL()
+	if base == "" {
+		return
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if cwffi.Running() {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		next := drv.Height() + 1
+		if next < 1 {
+			next = 1
+		}
+		payload := fetchPayload(client, base, next)
+		if len(payload) > 0 {
+			drv.ApplyRemote(payload)
+			// Period boundary: give the rotator time to Start if we are in BondedSet.
+			h := drv.Height()
+			if leanvaltypes.PeriodFromHeight(h+1) != leanvaltypes.PeriodFromHeight(h) {
+				time.Sleep(time.Second)
+				continue
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+func fetchPayload(client *http.Client, base string, height int64) []byte {
+	urls := []string{
+		fmt.Sprintf("%s/payload?height=%d", base, height),
+		fmt.Sprintf("%s/block?height=%d", base, height),
+	}
+	for _, u := range urls {
+		resp, err := client.Get(u)
+		if err != nil {
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		_ = resp.Body.Close()
+		if p := decodeCatchupPayload(body, height); len(p) > 0 {
+			return p
+		}
+	}
+	return nil
+}
+
+func decodeCatchupPayload(body []byte, want int64) []byte {
+	var wrap struct {
+		Result  json.RawMessage `json:"result"`
+		Height  json.RawMessage `json:"height"`
+		Payload string          `json:"payload"`
+		Block   json.RawMessage `json:"block"`
+	}
+	if json.Unmarshal(body, &wrap) != nil {
+		return nil
+	}
+	raw := wrap.Result
+	if len(raw) == 0 {
+		raw = body
+	}
+	var res struct {
+		Payload string `json:"payload"`
+		Height  string `json:"height"`
+		Block   struct {
+			Header struct {
+				Height string `json:"height"`
+			} `json:"header"`
+			Data struct {
+				Txs []string `json:"txs"`
+			} `json:"data"`
+		} `json:"block"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return nil
+	}
+	hs := res.Height
+	if hs == "" {
+		hs = res.Block.Header.Height
+	}
+	if hs != "" {
+		var h int64
+		fmt.Sscanf(hs, "%d", &h)
+		if h != 0 && h != want {
+			return nil
+		}
+	}
+	b64 := res.Payload
+	if b64 == "" && len(res.Block.Data.Txs) > 0 {
+		b64 = res.Block.Data.Txs[0]
+	}
+	if b64 == "" {
+		return nil
+	}
+	p, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil
+	}
+	if _, err := cwffi.DecodePayload(p); err != nil {
+		return nil
+	}
+	return p
 }
 
 func maybeInitChain(app types.Application, cfg *cmtcfg.Config) error {

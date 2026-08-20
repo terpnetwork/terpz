@@ -121,3 +121,31 @@ func TestFinalizeCallsCommit(t *testing.T) {
 		t.Fatalf("finalize=%d commit=%d", app.finalize, app.commit)
 	}
 }
+
+func TestApplyRemoteIdempotent(t *testing.T) {
+	app := &fakeApp{}
+	d := NewDriver(app, "lean", nil)
+	p := Payload{Height: 1, Txs: [][]byte{[]byte("LNPR")}}
+	raw := p.Encode()
+	d.ApplyRemote(raw)
+	d.ApplyRemote(raw)
+	if app.finalize != 1 || app.commit != 1 {
+		t.Fatalf("finalize=%d commit=%d", app.finalize, app.commit)
+	}
+	if d.Height() != 1 {
+		t.Fatalf("height %d", d.Height())
+	}
+	got, h, _ := d.PayloadAt(1)
+	if h != 1 || len(got) == 0 {
+		t.Fatalf("payload h=%d n=%d", h, len(got))
+	}
+}
+
+func TestBondedParticipantsEmpty(t *testing.T) {
+	if BondedParticipants(nil, 0) != nil {
+		t.Fatal("nil query")
+	}
+	if BondedParticipants(func(string, []byte) []byte { return nil }, 1) != nil {
+		t.Fatal("empty store")
+	}
+}

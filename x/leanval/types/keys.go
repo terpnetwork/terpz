@@ -1,5 +1,11 @@
 package types
 
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
 // Store prefixes. Single KV tree — never LastValidatorPowers.
 const (
 	ModuleName = "leanval"
@@ -150,11 +156,25 @@ func NoWithdrawAccKey(period uint64) []byte {
 	return k
 }
 
+// BlocksPerPeriodLive is BlocksPerPeriod unless LEAN_BLOCKS_PER_PERIOD is set
+// (lab-only; ICT uses 8). Production default stays 600.
+func BlocksPerPeriodLive() int64 {
+	s := strings.TrimSpace(os.Getenv("LEAN_BLOCKS_PER_PERIOD"))
+	if s == "" {
+		return BlocksPerPeriod
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 {
+		return BlocksPerPeriod
+	}
+	return n
+}
+
 func PeriodFromHeight(height int64) uint64 {
 	if height < 0 {
 		return 0
 	}
-	return uint64(height / BlocksPerPeriod)
+	return uint64(height / BlocksPerPeriodLive())
 }
 
 func BondedKey(period uint64, subject []byte) []byte {

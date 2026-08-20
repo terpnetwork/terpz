@@ -22,7 +22,12 @@ func ServeRPC(listen string, d *Driver) error {
 		writeJSON(w, statusResult(d))
 	})
 	mux.HandleFunc("/block", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: blockResult(d)})
+		h := parseHeightQuery(r)
+		writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: blockResult(d, h)})
+	})
+	mux.HandleFunc("/payload", func(w http.ResponseWriter, r *http.Request) {
+		h := parseHeightQuery(r)
+		writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: payloadResult(d, h)})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/status" {
@@ -30,7 +35,11 @@ func ServeRPC(listen string, d *Driver) error {
 			return
 		}
 		if r.URL.Path == "/block" || strings.HasPrefix(r.URL.Path, "/block") {
-			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: blockResult(d)})
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: blockResult(d, parseHeightQuery(r))})
+			return
+		}
+		if r.URL.Path == "/payload" || strings.HasPrefix(r.URL.Path, "/payload") {
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: payloadResult(d, parseHeightQuery(r))})
 			return
 		}
 		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/broadcast_tx_sync") {
@@ -51,7 +60,9 @@ func ServeRPC(listen string, d *Driver) error {
 		case "status":
 			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: statusResult(d)})
 		case "block":
-			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: blockResult(d)})
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: blockResult(d, parseHeightJSON(req.Params))})
+		case "payload":
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: payloadResult(d, parseHeightJSON(req.Params))})
 		case "broadcast_tx_sync", "broadcast_tx_commit", "broadcast_tx_async":
 			tx, err := parseTxParam(req.Params)
 			if err != nil {
@@ -179,12 +190,74 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func blockResult(d *Driver) map[string]any {
+func parseHeightQuery(r *http.Request) int64 {
+	s := r.URL.Query().Get("height")
+	if s == "" {
+		return 0
+	}
+	h, _ := strconv.ParseInt(s, 10, 64)
+	return h
+}
+
+func parseHeightJSON(params json.RawMessage) int64 {
+	if len(params) == 0 {
+		return 0
+	}
+	var obj struct {
+		Height json.RawMessage `json:"height"`
+	}
+	if err := json.Unmarshal(params, &obj); err == nil && len(obj.Height) > 0 {
+		var n int64
+		if json.Unmarshal(obj.Height, &n) == nil {
+			return n
+		}
+		var s string
+		if json.Unmarshal(obj.Height, &s) == nil {
+			n, _ = strconv.ParseInt(s, 10, 64)
+			return n
+		}
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(params, &arr); err == nil && len(arr) > 0 {
+		var n int64
+		if json.Unmarshal(arr[0], &n) == nil {
+			return n
+		}
+		var s string
+		if json.Unmarshal(arr[0], &s) == nil {
+			n, _ = strconv.ParseInt(s, 10, 64)
+			return n
+		}
+	}
+	return 0
+}
+
+func payloadResult(d *Driver, height int64) map[string]any {
+	var payload []byte
+	h := height
+	if d != nil {
+		payload, h, _ = d.PayloadAt(height)
+	}
+	b64 := ""
+	if len(payload) > 0 {
+		b64 = base64.StdEncoding.EncodeToString(payload)
+	}
+	return map[string]any{
+		"height":  strconv.FormatInt(h, 10),
+		"payload": b64,
+	}
+}
+
+func blockResult(d *Driver, height int64) map[string]any {
 	h := int64(0)
 	n := 0
+	var payload []byte
 	if d != nil {
-		h = d.Height()
-		n = d.LastCommitSigs()
+		payload, h, n = d.PayloadAt(height)
+		if h == 0 {
+			h = d.Height()
+			n = d.LastCommitSigs()
+		}
 	}
 	sigs := make([]map[string]any, 0, n)
 	for i := 0; i < n; i++ {
@@ -193,14 +266,24 @@ func blockResult(d *Driver) map[string]any {
 			"signature":     "AA==",
 		})
 	}
+	txs := []string{}
+	b64 := ""
+	if len(payload) > 0 {
+		b64 = base64.StdEncoding.EncodeToString(payload)
+		txs = []string{b64}
+	}
 	return map[string]any{
 		"block": map[string]any{
 			"header": map[string]any{
 				"height": strconv.FormatInt(h, 10),
 			},
+			"data": map[string]any{
+				"txs": txs,
+			},
 			"last_commit": map[string]any{
 				"signatures": sigs,
 			},
 		},
+		"payload": b64,
 	}
 }

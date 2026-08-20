@@ -36,6 +36,7 @@ type Config struct {
 	StorageDir    string
 	Namespace     string
 	Participants  []byte // concatenated 32-byte ed25519 pubkeys
+	Epoch         uint64
 }
 
 func Start(drv *Driver, cfg Config) error {
@@ -70,6 +71,7 @@ func Start(drv *Driver, cfg Config) error {
 		ccfg.participants_len = C.size_t(len(cfg.Participants))
 		defer C.free(unsafe.Pointer(ccfg.participants))
 	}
+	ccfg.epoch = C.uint64_t(cfg.Epoch)
 
 	var cb C.lean_cw_callbacks
 	C.lean_cw_fill_callbacks(&cb, nil)
@@ -83,8 +85,16 @@ func Stop() {
 	C.lean_cw_stop()
 }
 
+func Running() bool {
+	return C.lean_cw_running() != 0
+}
+
 func EngineHeight() uint64 {
 	return uint64(C.lean_cw_height())
+}
+
+func EngineEpoch() uint64 {
+	return uint64(C.lean_cw_epoch())
 }
 
 func currentDriver() *Driver {
@@ -167,4 +177,22 @@ func goLeanCwFinalize(user unsafe.Pointer, epoch, view C.uint64_t, digest *C.uin
 		pay = C.GoBytes(unsafe.Pointer(payload), C.int(payloadLen))
 	}
 	d.Finalize(uint64(epoch), uint64(view), dgst, pay)
+}
+
+//export goLeanCwParticipants
+func goLeanCwParticipants(user unsafe.Pointer, epoch C.uint64_t, pkOut **C.uint8_t, pkLen *C.size_t) C.int {
+	_ = user
+	d := currentDriver()
+	if d == nil || pkOut == nil || pkLen == nil {
+		return -1
+	}
+	pks := d.Participants(uint64(epoch))
+	if len(pks) == 0 {
+		*pkOut = nil
+		*pkLen = 0
+		return 0
+	}
+	*pkOut = (*C.uint8_t)(C.CBytes(pks))
+	*pkLen = C.size_t(len(pks))
+	return 0
 }

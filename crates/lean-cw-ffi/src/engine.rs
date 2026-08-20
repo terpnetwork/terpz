@@ -42,10 +42,12 @@ pub struct StartCfg {
     pub storage_dir: String,
     pub namespace: String,
     pub participants: Vec<[u8; 32]>,
+    pub epoch: u64,
 }
 
-pub fn genesis_digest() -> commonware_cryptography::sha256::Digest {
-    Sha256::hash(&[b"lean-cw-ffi-genesis"])
+pub fn genesis_digest(epoch: u64) -> commonware_cryptography::sha256::Digest {
+    let ep = epoch.to_be_bytes();
+    Sha256::hash(&[b"lean-cw-ffi-genesis", &ep])
 }
 
 pub fn parse_participants(bytes: &[u8]) -> Result<Vec<[u8; 32]>, String> {
@@ -152,15 +154,19 @@ fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
 
 /// Block this thread on the commonware tokio runner until stop.
 pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
-    if RUNNING.swap(true, Ordering::SeqCst) {
-        return Err("lean-cw-ffi already running".into());
-    }
-
     let signer = decode_sk(&cfg.private_key)?;
     let (listen, public) = parse_bind_public(&cfg.listen)?;
 
+    let mut raw_pks = cfg.participants.clone();
+    if let Some(bytes) = cb.participants(cfg.epoch) {
+        match parse_participants(&bytes) {
+            Ok(p) if !p.is_empty() => raw_pks = p,
+            Ok(_) => {}
+            Err(e) => tracing::warn!(%e, "participants callback"),
+        }
+    }
     let mut pks: Vec<ed25519::PublicKey> = Vec::new();
-    for raw in &cfg.participants {
+    for raw in &raw_pks {
         pks.push(decode_pk(raw)?);
     }
     if pks.is_empty() {
@@ -171,9 +177,12 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
         .try_collect()
         .map_err(|_| "participant public keys must be unique")?;
     if validators.position(&signer.public_key()).is_none() {
-        RUNNING.store(false, Ordering::SeqCst);
         return Err("private key is not in participants".into());
     }
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("lean-cw-ffi already running".into());
+    }
+    EPOCH.store(cfg.epoch, Ordering::SeqCst);
 
     let bootstrappers = parse_bootstrappers(&cfg.bootstrappers)?;
     let max_peers_per_set = authenticated::peer_set_limit(&validators, &signer.public_key());
@@ -236,10 +245,10 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
                 automaton: app.clone(),
                 relay: app.clone(),
                 reporter: app,
-                partition: String::from("lean"),
+                partition: format!("lean-{}", cfg.epoch),
                 mailbox_size: NZUsize!(1024),
-                epoch: Epoch::zero(),
-                floor: Floor::Genesis(genesis_digest()),
+                epoch: Epoch::new(cfg.epoch),
+                floor: Floor::Genesis(genesis_digest(cfg.epoch)),
                 replay_buffer: NZUsize!(1024 * 1024),
                 write_buffer: NZUsize!(1024 * 1024),
                 leader_timeout: Duration::from_millis(800),
