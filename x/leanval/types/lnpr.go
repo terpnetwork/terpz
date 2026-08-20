@@ -89,6 +89,11 @@ func DecodeLNPR(tx []byte) (LNPRBlob, bool) {
 // MaxProofBytes is the host cap (DUMMY-STWO). Larger → invalid, no verify.
 const MaxProofBytes = 2 << 20
 
+// MaxRawStarksPerLNPR is LEAN-5: one slot must not ship a raw STARK per
+// bonded subject. Fold covers the roster via object-root inclusion; extras
+// (JOIN) may carry individual STWO proofs up to this cap.
+const MaxRawStarksPerLNPR = 8
+
 // TxDecoder is the subset of sdk.TxDecoder we wrap (avoid sdk import in types).
 type TxDecoder func([]byte) (any, error)
 

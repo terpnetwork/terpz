@@ -135,7 +135,20 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 	}
 	roots := k.LastObjectRoots()
 	pairs := foldPairStrings(period, subs, roots)
-	if fold, err := ProveSameStatementFold(pairs); err == nil && len(fold) > 0 {
+	extras := 0
+	for _, s := range subs {
+		if _, ok := known[string(s.Subject)]; !ok && s.Weight > 0 {
+			extras++
+		}
+	}
+	fold, foldErr := ProveSameStatementFold(pairs)
+	useFold := foldErr == nil && len(fold) > 0
+	// LEAN-5: Dummy DSTW must not ride in the same blob as a Stwo fold.
+	// Lab JOIN extras use Dummy only when we skip the aggregate.
+	if useFold && extras > 0 && k.AllowDummy && len(subs) <= types.MaxRawStarksPerLNPR {
+		useFold = false
+	}
+	if useFold {
 		idx := 0
 		for i, s := range subs {
 			if _, ok := known[string(s.Subject)]; ok {
@@ -148,16 +161,22 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 		} else {
 			subs[idx].Proof = fold
 		}
+		// Roster members are included via the fold (bitfield root). JOIN extras
+		// are not in that root; Dummy DSTW must not mix with the aggregate.
+		return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 	}
 	// JOIN extras stay on the roster even if Dummy is closed (unverifiable).
 	// Fold of current object roots does not prove them. Dummy extras bind
 	// store-sourced roots (waist). Do not hide a stall with genesis-only.
+	// LEAN-5: cap raw Dummy/STWO so a 100-validator slot is not 100 proofs.
 	if k.AllowDummy {
+		raw := 0
 		for i := range subs {
-			if isFoldProof(subs[i].Proof) {
-				continue
+			if raw >= types.MaxRawStarksPerLNPR {
+				break
 			}
 			subs[i].Proof = DummyStwoProveBoundRoots(period, subs[i].Subject, subs[i].Weight, roots)
+			raw++
 		}
 	}
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})

@@ -260,8 +260,23 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 		return errProof("STWO FOLD required (bitfield root, not Dummy-N)")
 	}
 
+	raw := 0
+	if fold != nil {
+		raw++
+	}
 	known := k.knownSubjectSet(blob.Period)
 	for i, s := range blob.Subjects {
+		if bytes.Contains(s.Proof, []byte("DSTW")) {
+			if fold != nil {
+				return errProof("Dummy DSTW in an aggregate must fail the batch")
+			}
+		}
+		if len(s.Proof) > 0 && !isFoldProof(s.Proof) {
+			raw++
+			if raw > types.MaxRawStarksPerLNPR {
+				return errProof("too many raw STARKs per slot (aggregate or cap)")
+			}
+		}
 		_, inRoster := known[string(s.Subject)]
 		extra := !inRoster && s.Weight > 0
 		if extra {
