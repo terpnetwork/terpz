@@ -21,9 +21,16 @@ func ServeRPC(listen string, d *Driver) error {
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, statusResult(d))
 	})
+	mux.HandleFunc("/block", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: blockResult(d)})
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/status" {
 			writeJSON(w, statusResult(d))
+			return
+		}
+		if r.URL.Path == "/block" || strings.HasPrefix(r.URL.Path, "/block") {
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: blockResult(d)})
 			return
 		}
 		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/broadcast_tx_sync") {
@@ -43,6 +50,8 @@ func ServeRPC(listen string, d *Driver) error {
 		switch req.Method {
 		case "status":
 			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: statusResult(d)})
+		case "block":
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: blockResult(d)})
 		case "broadcast_tx_sync", "broadcast_tx_commit", "broadcast_tx_async":
 			tx, err := parseTxParam(req.Params)
 			if err != nil {
@@ -168,4 +177,30 @@ func sha256Hex(b []byte) string {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func blockResult(d *Driver) map[string]any {
+	h := int64(0)
+	n := 0
+	if d != nil {
+		h = d.Height()
+		n = d.LastCommitSigs()
+	}
+	sigs := make([]map[string]any, 0, n)
+	for i := 0; i < n; i++ {
+		sigs = append(sigs, map[string]any{
+			"block_id_flag": 2,
+			"signature":     "AA==",
+		})
+	}
+	return map[string]any{
+		"block": map[string]any{
+			"header": map[string]any{
+				"height": strconv.FormatInt(h, 10),
+			},
+			"last_commit": map[string]any{
+				"signatures": sigs,
+			},
+		},
+	}
 }

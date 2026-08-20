@@ -196,7 +196,7 @@ terpz-linux: build-check-version go.sum
 		-e LEDGER_ENABLED=false \
 		-e CGO_LDFLAGS="-L$(LEAN_CW_MUSL_DIR)" \
 		golang:1.25-alpine \
-		sh -c 'apk add --no-cache gcc musl-dev linux-headers git \
+		sh -c 'apk add --no-cache gcc g++ libstdc++-dev musl-dev linux-headers git \
 		&& go build -mod=readonly -tags "netgo muslc" \
 		-ldflags "$(ldflags) -X github.com/cosmos/cosmos-sdk/version.AppName=terpz -linkmode=external -extldflags \"-Wl,-z,muldefs -static\"" \
 		-o $(BUILDDIR)/terpz-linux $(GO_MODULE)/cmd/terpd'

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -21,6 +22,27 @@ import (
 func useCommonware() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("LEAN_CONSENSUS")))
 	return v == "commonware" || v == "cw" || v == "simplex"
+}
+
+func skipCommonwareEngine(pv *pvm.FilePV, participants []byte) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("LEAN_CW_SKIP")))
+	if v == "1" || v == "true" || v == "yes" {
+		return true
+	}
+	pk, err := pv.GetPubKey()
+	if err != nil {
+		return true
+	}
+	raw := pk.Bytes()
+	if len(raw) != 32 || len(participants) < 32 {
+		return true
+	}
+	for i := 0; i+32 <= len(participants); i += 32 {
+		if bytes.Equal(raw, participants[i:i+32]) {
+			return false
+		}
+	}
+	return true
 }
 
 func startCommonware(
@@ -64,6 +86,9 @@ func startCommonware(
 	if listen == "" {
 		listen = strings.TrimPrefix(cfg.P2P.ListenAddress, "tcp://")
 	}
+	if pub := strings.TrimSpace(os.Getenv("LEAN_CW_PUBLIC")); pub != "" {
+		listen = listen + "|" + pub
+	}
 	boot := os.Getenv("LEAN_CW_BOOTSTRAPPERS")
 	storage := filepath.Join(cfg.RootDir, "lean-cw")
 	if err := os.MkdirAll(storage, 0o755); err != nil {
@@ -71,26 +96,32 @@ func startCommonware(
 	}
 
 	drv := cwffi.NewDriver(app, doc.ChainID, []byte(pv.GetAddress()))
-	svrCtx.Logger.Info("starting Commonware simplex (Comet consensus disabled)", "listen", listen)
-	if err := cwffi.Start(drv, cwffi.Config{
-		PrivateKey:    seed,
-		Listen:        listen,
-		Bootstrappers: boot,
-		StorageDir:    storage,
-		Namespace:     "lean-terpz",
-		Participants:  participants,
-	}); err != nil {
-		return err
+	drv.SetCommittee(len(participants) / 32)
+
+	if skipCommonwareEngine(pv, participants) {
+		svrCtx.Logger.Info("Commonware simplex skipped (full node / not in genesis participants)")
+	} else {
+		svrCtx.Logger.Info("starting Commonware simplex (Comet consensus disabled)", "listen", listen)
+		if err := cwffi.Start(drv, cwffi.Config{
+			PrivateKey:    seed,
+			Listen:        listen,
+			Bootstrappers: boot,
+			StorageDir:    storage,
+			Namespace:     "lean-terpz",
+			Participants:  participants,
+		}); err != nil {
+			return err
+		}
+		g.Go(func() error {
+			<-ctx.Done()
+			cwffi.Stop()
+			return nil
+		})
 	}
 	if err := cwffi.ServeRPC(cfg.RPC.ListenAddress, drv); err != nil {
 		cwffi.Stop()
 		return err
 	}
-	g.Go(func() error {
-		<-ctx.Done()
-		cwffi.Stop()
-		return nil
-	})
 	return nil
 }
 

@@ -18,7 +18,7 @@ use commonware_runtime::{
 };
 use commonware_utils::{channel::oneshot, union, NZU16, NZU32, NZUsize, TryCollect, ordered::Set};
 use std::{
-    net::SocketAddr,
+    net::{SocketAddr, ToSocketAddrs},
     str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -73,6 +73,40 @@ fn decode_sk(raw: &[u8; 32]) -> Result<ed25519::PrivateKey, String> {
     ed25519::PrivateKey::decode(raw.as_slice()).map_err(|e| format!("private key: {e}"))
 }
 
+
+fn parse_bind_public(spec: &str) -> Result<(SocketAddr, SocketAddr), String> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        let sa: SocketAddr = "0.0.0.0:26656".parse().unwrap();
+        return Ok((sa, sa));
+    }
+    let (bind_s, pub_s) = match spec.split_once('|') {
+        Some((a, b)) => (a.trim(), b.trim()),
+        None => (spec, spec),
+    };
+    Ok((parse_sock(bind_s)?, parse_sock(pub_s)?))
+}
+
+fn parse_sock(s: &str) -> Result<SocketAddr, String> {
+    if s.is_empty() {
+        return "0.0.0.0:26656"
+            .parse()
+            .map_err(|e| format!("default listen: {e}"));
+    }
+    if let Ok(sa) = SocketAddr::from_str(s) {
+        return Ok(sa);
+    }
+    let mut addrs: Vec<SocketAddr> = s
+        .to_socket_addrs()
+        .map_err(|e| format!("addr {s}: {e}"))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("addr {s}: unresolved"));
+    }
+    addrs.sort_by_key(|a| a.is_ipv6());
+    Ok(addrs.remove(0))
+}
+
 fn parse_bootstrappers(
     spec: &str,
 ) -> Result<Vec<(ed25519::PublicKey, Ingress)>, String> {
@@ -95,7 +129,11 @@ fn parse_bootstrappers(
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&pk_bytes);
         let pk = decode_pk(&arr)?;
-        let sock = SocketAddr::from_str(addr).map_err(|e| format!("bootstrapper addr: {e}"))?;
+        let sock = addr
+            .to_socket_addrs()
+            .map_err(|e| format!("bootstrapper addr {addr}: {e}"))?
+            .next()
+            .ok_or_else(|| format!("bootstrapper addr {addr}: unresolved"))?;
         out.push((pk, sock.into()));
     }
     Ok(out)
@@ -119,11 +157,7 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
     }
 
     let signer = decode_sk(&cfg.private_key)?;
-    let listen: SocketAddr = if cfg.listen.is_empty() {
-        "127.0.0.1:26656".parse().unwrap()
-    } else {
-        SocketAddr::from_str(&cfg.listen).map_err(|e| format!("listen: {e}"))?
-    };
+    let (listen, public) = parse_bind_public(&cfg.listen)?;
 
     let mut pks: Vec<ed25519::PublicKey> = Vec::new();
     for raw in &cfg.participants {
@@ -161,7 +195,7 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
         signer.clone(),
         &union(&ns, b"_P2P"),
         listen,
-        listen,
+        public,
         bootstrappers,
         max_peers_per_set,
         4 * 1024 * 1024,

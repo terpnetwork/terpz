@@ -102,3 +102,7 @@ artifacts/
 !crates/lean-cw-ffi/include/**
 !crates/lean-cw-ffi/src/
 !crates/lean-cw-ffi/src/**
+crates/lean-cw-ffi/target/
+crates/lean-cw-ffi/target-musl/
+crates/lean-cw-ffi/target-musl-198/
+/terpz

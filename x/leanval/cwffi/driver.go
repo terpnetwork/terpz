@@ -22,11 +22,14 @@ type EngineApp interface {
 // Driver maps simplex Automaton/Reporter onto ABCI Prepare/Process/Finalize.
 // Dummy DSTW still fails in Process. JOIN/LEAV stay LNPR injects.
 type Driver struct {
-	mu       sync.Mutex
-	app      EngineApp
-	proposer []byte
-	chainID  string
-	next     int64
+	mu        sync.Mutex
+	app       EngineApp
+	proposer  []byte
+	chainID   string
+	next      int64
+	committee int
+	lastSigs  int
+	mempool   [][]byte
 }
 
 func NewDriver(app EngineApp, chainID string, proposer []byte) *Driver {
@@ -43,6 +46,24 @@ func NewDriver(app EngineApp, chainID string, proposer []byte) *Driver {
 	return d
 }
 
+func (d *Driver) SetCommittee(n int) {
+	if n < 0 {
+		n = 0
+	}
+	d.mu.Lock()
+	d.committee = n
+	d.mu.Unlock()
+}
+
+func (d *Driver) LastCommitSigs() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.lastSigs > 0 {
+		return d.lastSigs
+	}
+	return d.committee
+}
+
 func (d *Driver) Height() int64 {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -52,6 +73,10 @@ func (d *Driver) Height() int64 {
 	return d.next - 1
 }
 
+func txKey(tx []byte) [32]byte {
+	return sha256.Sum256(tx)
+}
+
 func (d *Driver) Propose(epoch, view uint64, _parent []byte) (digest, payload []byte, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -59,10 +84,15 @@ func (d *Driver) Propose(epoch, view uint64, _parent []byte) (digest, payload []
 	if h < 1 {
 		h = 1
 	}
+	txs := make([][]byte, 0, len(d.mempool))
+	for _, tx := range d.mempool {
+		txs = append(txs, append([]byte(nil), tx...))
+	}
 	req := &abci.RequestPrepareProposal{
 		Height:          h,
 		Time:            time.Now().UTC(),
 		MaxTxBytes:      4 << 20,
+		Txs:             txs,
 		ProposerAddress: d.proposer,
 	}
 	resp, err := d.app.PrepareProposal(req)
@@ -133,6 +163,20 @@ func (d *Driver) Finalize(_epoch, _view uint64, digest, payload []byte) {
 	if _, err := d.app.Commit(); err != nil {
 		return
 	}
+	included := make(map[[32]byte]struct{}, len(p.Txs))
+	for _, tx := range p.Txs {
+		included[txKey(tx)] = struct{}{}
+	}
+	kept := d.mempool[:0]
+	for _, tx := range d.mempool {
+		if _, ok := included[txKey(tx)]; !ok {
+			kept = append(kept, tx)
+		}
+	}
+	d.mempool = kept
+	if d.committee > 0 {
+		d.lastSigs = d.committee
+	}
 	d.next = p.Height + 1
 	setEngineHeight(uint64(p.Height))
 }
@@ -140,7 +184,20 @@ func (d *Driver) Finalize(_epoch, _view uint64, digest, payload []byte) {
 func (d *Driver) CheckTx(tx []byte) (*abci.ResponseCheckTx, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.app.CheckTx(&abci.RequestCheckTx{Tx: tx, Type: abci.CheckTxType_New})
+	resp, err := d.app.CheckTx(&abci.RequestCheckTx{Tx: tx, Type: abci.CheckTxType_New})
+	if err != nil {
+		return resp, err
+	}
+	if resp != nil && resp.Code == 0 && len(tx) > 0 {
+		k := txKey(tx)
+		for _, existing := range d.mempool {
+			if txKey(existing) == k {
+				return resp, nil
+			}
+		}
+		d.mempool = append(d.mempool, append([]byte(nil), tx...))
+	}
+	return resp, nil
 }
 
 func (d *Driver) Info() (*abci.ResponseInfo, error) {
