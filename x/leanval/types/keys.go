@@ -33,6 +33,10 @@ const (
 	EBPrefix byte = 0x13
 	// DailyKeyPrefix: period(8 BE) -> 32-byte re-anon day key (LEAN-6). Not BondedSet power.
 	DailyKeyPrefix byte = 0x14
+	// WithdrawCommitPrefix: period(8 BE) -> H(addr, secret) (LEAN-7). Not a consensus address.
+	WithdrawCommitPrefix byte = 0x15
+	// NoWithdrawAccPrefix: period(8 BE) -> daily no-withdraw accumulator root.
+	NoWithdrawAccPrefix byte = 0x16
 )
 
 // ObjectRootsSize is deposit(32) || bitfield(32) || eb(32).
@@ -128,6 +132,20 @@ func PendingLeavePrefixForPeriod(period uint64) []byte {
 func DailyKeyKey(period uint64) []byte {
 	k := make([]byte, 1+8)
 	k[0] = DailyKeyPrefix
+	putU64(k[1:9], period)
+	return k
+}
+
+func WithdrawCommitKey(period uint64) []byte {
+	k := make([]byte, 1+8)
+	k[0] = WithdrawCommitPrefix
+	putU64(k[1:9], period)
+	return k
+}
+
+func NoWithdrawAccKey(period uint64) []byte {
+	k := make([]byte, 1+8)
+	k[0] = NoWithdrawAccPrefix
 	putU64(k[1:9], period)
 	return k
 }

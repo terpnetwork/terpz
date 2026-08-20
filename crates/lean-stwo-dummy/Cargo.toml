@@ -48,3 +48,8 @@ required-features = ["real-stwo"]
 name = "lean-daily-keys"
 path = "src/bin/daily_air.rs"
 required-features = ["real-stwo"]
+
+[[bin]]
+name = "lean-withdraw"
+path = "src/bin/withdraw_air.rs"
+required-features = ["real-stwo"]

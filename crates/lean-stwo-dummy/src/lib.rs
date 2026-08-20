@@ -321,6 +321,16 @@ mod daily;
 #[cfg(feature = "real-stwo")]
 pub use daily::{daily_key, prove_daily, verify_daily, DAILY_KIND, DAILY_PI_LEN, DAY_KEY_LEN};
 
+#[cfg(feature = "real-stwo")]
+mod withdraw;
+
+#[cfg(feature = "real-stwo")]
+pub use withdraw::{
+    no_withdraw_acc, partial_new_commit, prove_no_withdraw, prove_partial_withdraw,
+    verify_no_withdraw, verify_partial_withdraw, withdraw_commit, COMMIT_LEN, NWDA_KIND,
+    PWDW_KIND, WITHDRAW_PI_LEN,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,6 +623,32 @@ mod tests {
         assert!(crate::verify_daily(&bad, 7, &key, &prev).is_err());
         let other = crate::daily_key(8, &identity);
         assert_ne!(key, other);
+    }
+
+    #[cfg(feature = "real-stwo")]
+    #[test]
+    fn test_hidden_withdraw_dummy_fails_and_partial_is_separate() {
+        let addr = [0x11u8; 20];
+        let secret = [0x22u8; 32];
+        let commit = crate::withdraw_commit(&addr, &secret);
+        assert_ne!(&commit[..20], &addr[..]);
+        let prev = [0u8; 32];
+        let (acc, proof) = crate::prove_no_withdraw(4, &prev, &commit).expect("nw prove");
+        crate::verify_no_withdraw(&proof, 4, &acc, &prev).expect("nw verify");
+        assert_eq!(&proof[0..4], crate::STWO_MAGIC);
+        assert_eq!(proof[4], crate::CIRCUIT_TYPE_STWO);
+        assert_eq!(proof[5], crate::CURVE_TYPE_M31);
+        assert_eq!(&proof[6..10], crate::NWDA_KIND);
+        assert!(!proof.windows(4).any(|w| w == b"DSTW"));
+        assert!(crate::verify_no_withdraw(b"DSTWDSTW", 4, &acc, &prev).is_err());
+        let (next, pw) = crate::prove_partial_withdraw(4, &commit, 7).expect("pw prove");
+        crate::verify_partial_withdraw(&pw, 4, &commit, &next).expect("pw verify");
+        assert_eq!(&pw[6..10], crate::PWDW_KIND);
+        assert!(crate::verify_no_withdraw(&pw, 4, &acc, &prev).is_err());
+        assert!(crate::verify_partial_withdraw(&proof, 4, &commit, &next).is_err());
+        let mut bad = proof.clone();
+        bad[proof.len() / 2] ^= 1;
+        assert!(crate::verify_no_withdraw(&bad, 4, &acc, &prev).is_err());
     }
 
     #[cfg(feature = "real-stwo")]
