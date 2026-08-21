@@ -23,6 +23,7 @@ type JoinBlob struct {
 	Period  uint64
 	Subject []byte
 	Weight  int64
+	Proof   []byte // valset STWO extra; Dummy DSTW must not appear
 }
 
 // LeaveBlob is a committed leave: BondedSet drops the subject.
@@ -44,6 +45,9 @@ func EncodeJoin(b JoinBlob) []byte {
 	out = append(out, byte(len(subj)))
 	out = append(out, subj...)
 	out = append(out, PutI64(b.Weight)...)
+	if len(b.Proof) > 0 {
+		out = append(out, b.Proof...)
+	}
 	return out
 }
 
@@ -66,6 +70,9 @@ func DecodeJoin(tx []byte) (JoinBlob, bool) {
 	}
 	z.Subject = append([]byte(nil), p[:al]...)
 	z.Weight = GetI64(p[al : al+8])
+	if len(p) > al+8 {
+		z.Proof = append([]byte(nil), p[al+8:]...)
+	}
 	return z, true
 }
 

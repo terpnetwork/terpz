@@ -9,7 +9,7 @@ import (
 func TestBondedSetMissingProofWeightZero(t *testing.T) {
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	period := uint64(3)
-	subj := []byte("cons-addr-aaaaaaaaaaaaaaaa")
+	subj := append([]byte("cons-addr-aaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	k.PutSubject(period, subj, 100) // claimed 100, no accepted proof
 
 	set := k.BondedSet(period)

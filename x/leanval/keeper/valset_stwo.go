@@ -84,8 +84,12 @@ func verifyValsetStwo(proof []byte, period, index uint64, eb uint8, _ []byte) er
 	if len(proof) < 4 || !bytes.Equal(proof[:4], []byte("STWO")) {
 		return fmt.Errorf("leanval: valset verify: not STWO")
 	}
-	if bytes.HasPrefix(proof, []byte("DSTW")) {
+	if bytes.HasPrefix(proof, []byte("DSTW")) || bytes.Contains(proof, []byte("DSTW")) {
 		return fmt.Errorf("leanval: valset verify: DummyStwo DSTW rejected")
+	}
+	inst := valset_instance_bytes(period, index, eb)
+	if err := verifyStwoInProcess(proof, inst); err == nil {
+		return nil
 	}
 	if index >= (1 << 40) {
 		return fmt.Errorf("leanval: valset AIR deposit index exceeds 5 bytes")
@@ -106,4 +110,18 @@ func verifyValsetStwo(proof []byte, period, index uint64, eb uint8, _ []byte) er
 		return fmt.Errorf("leanval: valset verify: %w: %s", err, bytes.TrimSpace(out))
 	}
 	return nil
+}
+
+func valset_instance_bytes(period, index uint64, eb uint8) []byte {
+	b := make([]byte, 8+5+1)
+	for i := 0; i < 8; i++ {
+		b[i] = byte(period >> (56 - 8*i))
+	}
+	idx := make([]byte, 8)
+	for i := 0; i < 8; i++ {
+		idx[i] = byte(index >> (56 - 8*i))
+	}
+	copy(b[8:13], idx[3:8])
+	b[13] = eb
+	return b
 }

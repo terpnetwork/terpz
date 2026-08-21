@@ -41,9 +41,7 @@ func TestLeaveInPrepareReqTxsClearsBitAndRecheckDoesNotRejoin(t *testing.T) {
 	if len(blob.Subjects) < 4 {
 		t.Fatalf("JOIN LNPR subjects=%d want >=4: %+v", len(blob.Subjects), subjectsBrief(blob))
 	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("JOIN ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, k, resp.Txs)
 	if n := countSetBits(k); n != 4 {
 		t.Fatalf("after JOIN bits=%d want 4", n)
 	}
@@ -69,9 +67,7 @@ func TestLeaveInPrepareReqTxsClearsBitAndRecheckDoesNotRejoin(t *testing.T) {
 	if !sawZero {
 		t.Fatalf("LEAV must be weight-0 on LNPR: %+v", subjectsBrief(blob))
 	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("LEAV ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, k, resp.Txs)
 	if n := countSetBits(k); n != 3 {
 		t.Fatalf("after LEAV bits=%d want 3", n)
 	}
@@ -89,9 +85,7 @@ func TestLeaveInPrepareReqTxsClearsBitAndRecheckDoesNotRejoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("recheck ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, k, resp.Txs)
 	if n := countSetBits(k); n != 3 {
 		t.Fatalf("Recheck JOIN re-admitted leaver bits=%d want 3", n)
 	}

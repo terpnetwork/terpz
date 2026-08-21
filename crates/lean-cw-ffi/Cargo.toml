@@ -26,5 +26,7 @@ futures = "0.3"
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+rand = { version = "0.10.2", default-features = false, features = ["std", "std_rng", "sys_rng"] }
+rand_core = { version = "0.10.1", default-features = false }
 
 [dev-dependencies]

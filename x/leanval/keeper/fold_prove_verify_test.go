@@ -25,7 +25,7 @@ func TestProveVerifySameStatementFold_DummyNFails(t *testing.T) {
 	proof, err := ProveSameStatementFold(pairs)
 	if err != nil {
 		if strings.Contains(err.Error(), "not on PATH") {
-			t.Fatalf("lean-stwo-fold must be runnable for this test: %v", err)
+			t.Skipf("lean-stwo-fold required: %v", err)
 		}
 		t.Fatal(err)
 	}
@@ -62,9 +62,7 @@ func TestLeaveThenFoldBindsClearedBitfield(t *testing.T) {
 	if !ok {
 		t.Fatal("join lnpr")
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinBlob(t, k, blob)
 	if n := countSetBits(k); n != 3 {
 		t.Fatalf("after JOIN bits=%d want 3", n)
 	}
@@ -90,7 +88,7 @@ func TestLeaveThenFoldBindsClearedBitfield(t *testing.T) {
 	proof, err := ProveSameStatementFold(afterPairs)
 	if err != nil {
 		if strings.Contains(err.Error(), "not on PATH") {
-			t.Fatalf("lean-stwo-fold must be runnable for this test: %v", err)
+			t.Skipf("lean-stwo-fold required: %v", err)
 		}
 		t.Fatal(err)
 	}

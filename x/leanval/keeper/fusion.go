@@ -7,8 +7,6 @@ import (
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	"github.com/terpnetwork/terp-core/v6/x/leanval/types"
 )
 
 // TokenAllocator is x/distribution AllocateTokens (F1). We reuse it so
@@ -53,11 +51,22 @@ func (k *Keeper) AllocateDelegatorFees(ctx sdk.Context, alloc TokenAllocator) er
 	if alloc == nil {
 		return nil
 	}
-	h := ctx.BlockHeight()
-	if h > 0 {
-		h--
+	votes := ctx.VoteInfos()
+	if len(votes) == 0 {
+		// No certificate → no VoteInfos. Do not forge BlockIdFlagCommit.
+		return nil
 	}
-	p := types.PeriodFromHeight(h)
-	votes, total := VoteInfosFromBondedSet(k.BondedSetOrCarry(p))
-	return alloc.AllocateTokens(ctx, total, votes)
+	var total int64
+	out := make([]abci.VoteInfo, 0, len(votes))
+	for _, v := range votes {
+		if v.BlockIdFlag != cmtproto.BlockIDFlagCommit {
+			continue
+		}
+		total += v.Validator.Power
+		out = append(out, v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return alloc.AllocateTokens(ctx, total, out)
 }

@@ -24,13 +24,8 @@ pub type VerifyFn = unsafe extern "C" fn(
 pub type CertifyFn =
     unsafe extern "C" fn(user: *mut c_void, epoch: u64, view: u64, digest: *const u8) -> i32;
 
-pub type ReportFn = unsafe extern "C" fn(
-    user: *mut c_void,
-    kind: u32,
-    epoch: u64,
-    view: u64,
-    digest: *const u8,
-);
+pub type ReportFn =
+    unsafe extern "C" fn(user: *mut c_void, kind: u32, epoch: u64, view: u64, digest: *const u8);
 
 pub type FinalizeFn = unsafe extern "C" fn(
     user: *mut c_void,
@@ -39,6 +34,8 @@ pub type FinalizeFn = unsafe extern "C" fn(
     digest: *const u8,
     payload: *const u8,
     payload_len: usize,
+    certificate: *const u8,
+    certificate_len: usize,
 );
 
 pub type ParticipantsFn = unsafe extern "C" fn(
@@ -92,13 +89,7 @@ impl RawCallbacks {
         Some((digest, bytes))
     }
 
-    pub fn verify(
-        &self,
-        epoch: u64,
-        view: u64,
-        digest: &[u8; DIGEST_LEN],
-        payload: &[u8],
-    ) -> bool {
+    pub fn verify(&self, epoch: u64, view: u64, digest: &[u8; DIGEST_LEN], payload: &[u8]) -> bool {
         let Some(f) = self.verify else {
             return false;
         };
@@ -134,6 +125,7 @@ impl RawCallbacks {
         view: u64,
         digest: &[u8; DIGEST_LEN],
         payload: &[u8],
+        certificate: &[u8],
     ) {
         if let Some(f) = self.finalize {
             unsafe {
@@ -144,6 +136,8 @@ impl RawCallbacks {
                     digest.as_ptr(),
                     payload.as_ptr(),
                     payload.len(),
+                    certificate.as_ptr(),
+                    certificate.len(),
                 )
             }
         }

@@ -46,9 +46,7 @@ func TestCheckTxJoinThenPrepareLNPRSetsBits(t *testing.T) {
 		t.Fatalf("LNPR subjects=%d want >=4 (JOIN must ride on LNPR): %+v", len(blob.Subjects), subjectsBrief(blob))
 	}
 
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, k, resp.Txs)
 	if n := bitCount(k); n < 4 {
 		t.Fatalf("bits after ApplyLNPR=%d want >=4", n)
 	}
@@ -107,9 +105,7 @@ func TestJoinInPrepareReqTxsWithoutNoteReachesLNPR(t *testing.T) {
 	if len(blob.Subjects) < 4 {
 		t.Fatalf("LNPR subjects=%d want >=4 (JOIN must ride on LNPR from req.Txs): %+v", len(blob.Subjects), subjectsBrief(blob))
 	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, k, resp.Txs)
 	if n := bitCount(k); n < 4 {
 		t.Fatalf("bits after ApplyLNPR=%d want >=4", n)
 	}
@@ -145,12 +141,8 @@ func TestProposerJoinLNPRAppliedOnReplicaSetsBitsBoth(t *testing.T) {
 	if len(blob.Subjects) < 4 {
 		t.Fatalf("proposer LNPR subjects=%d want >=4", len(blob.Subjects))
 	}
-	if err := proposer.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("proposer ApplyLNPR: %v", err)
-	}
-	if err := replica.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("replica ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, proposer, resp.Txs)
+	applyJoinTxs(t, replica, resp.Txs)
 	pb, rb := bitCount(proposer), bitCount(replica)
 	if pb < 4 || rb < 4 {
 		t.Fatalf("bits proposer=%d replica=%d want both >=4", pb, rb)
@@ -183,12 +175,8 @@ func TestPreBlockMustNotApplyPendingJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := replica.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatal(err)
-	}
-	if err := proposer.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinTxs(t, replica, resp.Txs)
+	applyJoinTxs(t, proposer, resp.Txs)
 	if bitCount(proposer) != bitCount(replica) || bitCount(replica) < 2 {
 		t.Fatalf("after LNPR bits proposer=%d replica=%d want equal >=2", bitCount(proposer), bitCount(replica))
 	}

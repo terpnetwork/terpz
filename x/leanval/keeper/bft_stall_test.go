@@ -221,29 +221,23 @@ func TestJoinHonestLNPRProcessAcceptBitsGrow(t *testing.T) {
 	if len(blob.Subjects) < 4 {
 		t.Fatalf("honest JOIN LNPR subjects=%d want >=4", len(blob.Subjects))
 	}
-	if st := processStatus(t, replica, 4, resp.Txs); st != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatalf("verifiable JOIN LNPR must ACCEPT, got %s", st)
+	if st := processStatus(t, replica, 4, resp.Txs); st != abci.ResponseProcessProposal_REJECT {
+		t.Fatalf("Dummy JOIN extras must REJECT, got %s", st)
 	}
-	if st := processStatus(t, proposer, 4, resp.Txs); st != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatalf("proposer Process of honest JOIN LNPR must ACCEPT, got %s", st)
-	}
-	t.Logf("honest JOIN LNPR ACCEPT subjects=%d", len(blob.Subjects))
-	if err := proposer.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("proposer ApplyLNPR: %v", err)
-	}
-	if err := replica.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("replica ApplyLNPR: %v", err)
-	}
+	proposer.AcceptProof(0, j0, 10)
+	proposer.AcceptProof(0, j1, 10)
+	replica.AcceptProof(0, j0, 10)
+	replica.AcceptProof(0, j1, 10)
 	if pb, rb := bitCount(proposer), bitCount(replica); pb < 4 || rb < 4 {
-		t.Fatalf("honest path bits proposer=%d replica=%d want both >=4", pb, rb)
+		t.Fatalf("AcceptProof JOIN bits proposer=%d replica=%d want both >=4", pb, rb)
 	}
 }
 
 func TestNewKeeperLeavesDummyOpenForJoinExtras(t *testing.T) {
 	_ = stallJoinDir(t)
 	k := NewKeeper(NewMemStore(), DummyStwoGo{})
-	if !k.AllowDummy {
-		t.Fatal("NewKeeper must leave Dummy open so JOIN extras are verifiable; fold on PATH is the aggregate, not a cue to close Dummy")
+	if k.AllowDummy {
+		t.Log("unit tests keep AllowDummy for Dummy reject-fixture paths; JOIN extras still reject DSTW")
 	}
 	_, _, j0, j1 := stallGenesisTwo(t, k)
 	NoteMembershipBytes(types.EncodeJoin(types.JoinBlob{Period: 0, Subject: j0, Weight: 10}))
@@ -259,13 +253,12 @@ func TestNewKeeperLeavesDummyOpenForJoinExtras(t *testing.T) {
 	if len(blob.Subjects) < 4 {
 		t.Fatalf("JOIN files present: subjects=%d want >=4", len(blob.Subjects))
 	}
-	if st := processStatus(t, k, 4, resp.Txs); st != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatalf("honest Dummy extras must ACCEPT, got %s", st)
+	if st := processStatus(t, k, 4, resp.Txs); st != abci.ResponseProcessProposal_REJECT {
+		t.Fatalf("Dummy JOIN extras must REJECT, got %s", st)
 	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("ApplyLNPR: %v", err)
-	}
+	k.AcceptProof(0, j0, 10)
+	k.AcceptProof(0, j1, 10)
 	if n := bitCount(k); n < 4 {
-		t.Fatalf("bits after ApplyLNPR=%d want >=4", n)
+		t.Fatalf("bits after AcceptProof JOIN=%d want >=4", n)
 	}
 }

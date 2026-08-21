@@ -44,9 +44,7 @@ func TestRosterRefreshApplyKeepsPendingLeave(t *testing.T) {
 	if !ok {
 		t.Fatal("JOIN LNPR")
 	}
-	if err := a.ApplyLNPR(blob); err != nil {
-		t.Fatalf("a JOIN: %v", err)
-	}
+	applyJoinBlob(t, a, blob)
 	if n := countSetBits(a); n != 3 {
 		t.Fatalf("after JOIN bits=%d want 3", n)
 	}
@@ -68,9 +66,7 @@ func TestRosterRefreshApplyKeepsPendingLeave(t *testing.T) {
 			t.Fatal("refresh LNPR must be weight>0 roster")
 		}
 	}
-	if err := a.ApplyLNPR(refBlob); err != nil {
-		t.Fatalf("refresh ApplyLNPR: %v", err)
-	}
+	applyJoinBlob(t, a, refBlob)
 	if n := len(a.PendingMembershipTxs()); n != 1 {
 		t.Fatalf("roster refresh wiped pending LEAV, pending=%d want 1", n)
 	}
@@ -89,9 +85,7 @@ func TestRosterRefreshApplyKeepsPendingLeave(t *testing.T) {
 	if !sawZero {
 		t.Fatalf("LEAV must survive refresh onto LNPR: %+v", subjectsBrief(blob))
 	}
-	if err := a.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinBlob(t, a, blob)
 	if n := countSetBits(a); n != 2 {
 		t.Fatalf("after LEAV bits=%d want 2", n)
 	}

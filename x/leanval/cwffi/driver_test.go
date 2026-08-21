@@ -116,7 +116,7 @@ func TestFinalizeCallsCommit(t *testing.T) {
 	p := Payload{Height: 1, Txs: [][]byte{[]byte("LNPR")}}
 	raw := p.Encode()
 	sum := sha256.Sum256(raw)
-	d.Finalize(0, 1, sum[:], raw)
+	d.Finalize(0, 1, sum[:], raw, nil)
 	if app.finalize != 1 || app.commit != 1 {
 		t.Fatalf("finalize=%d commit=%d", app.finalize, app.commit)
 	}
@@ -125,10 +125,12 @@ func TestFinalizeCallsCommit(t *testing.T) {
 func TestApplyRemoteIdempotent(t *testing.T) {
 	app := &fakeApp{}
 	d := NewDriver(app, "lean", nil)
+	d.SetVerifyCert(func([]byte, []uint64, []byte) bool { return true })
 	p := Payload{Height: 1, Txs: [][]byte{[]byte("LNPR")}}
 	raw := p.Encode()
-	d.ApplyRemote(raw)
-	d.ApplyRemote(raw)
+	cert := []byte("LCERT") // non-empty; verify hook accepts
+	d.ApplyRemote(raw, cert)
+	d.ApplyRemote(raw, cert)
 	if app.finalize != 1 || app.commit != 1 {
 		t.Fatalf("finalize=%d commit=%d", app.finalize, app.commit)
 	}
@@ -138,6 +140,25 @@ func TestApplyRemoteIdempotent(t *testing.T) {
 	got, h, _ := d.PayloadAt(1)
 	if h != 1 || len(got) == 0 {
 		t.Fatalf("payload h=%d n=%d", h, len(got))
+	}
+}
+
+func TestApplyRemoteUnsignedForbidden(t *testing.T) {
+	app := &fakeApp{}
+	d := NewDriver(app, "lean", nil)
+	p := Payload{Height: 1, Txs: [][]byte{[]byte("LNPR")}}
+	d.ApplyRemote(p.Encode(), nil)
+	if app.finalize != 0 || app.commit != 0 {
+		t.Fatalf("unsigned ApplyRemote must not Commit, finalize=%d commit=%d", app.finalize, app.commit)
+	}
+}
+
+func TestReportConflictFailsLoud(t *testing.T) {
+	app := &fakeApp{}
+	d := NewDriver(app, "lean", nil)
+	d.Report(7, 1, 2, make([]byte, 32))
+	if d.ConflictCount() != 1 {
+		t.Fatalf("conflicts %d", d.ConflictCount())
 	}
 }
 

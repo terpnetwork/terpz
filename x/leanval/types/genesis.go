@@ -19,6 +19,7 @@ type GenesisState struct {
 	VerifierAddr    []byte           `json:"verifier_addr,omitempty"`
 	LeanCodeID      uint64           `json:"lean_code_id,omitempty"`
 	GenesisSubjects []GenesisSubject `json:"genesis_subjects,omitempty"`
+	BlocksPerPeriod int64            `json:"blocks_per_period,omitempty"`
 }
 
 func DefaultGenesis() GenesisState {

@@ -28,12 +28,14 @@ func TestApplyLNPRSameBlockTwoJoins(t *testing.T) {
 			{Subject: c, Weight: 10, Proof: DummyStwoProveBoundRoots(0, c, 10, roots)},
 		},
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
+	if err := k.ApplyLNPR(blob); err == nil {
+		t.Fatal("Dummy JOIN extras must reject")
 	}
+	k.AcceptProof(0, b, 10)
+	k.AcceptProof(0, c, 10)
 	set := k.BondedSet(0)
 	if len(set) != 3 {
-		t.Fatalf("same-block two joins: got %d %+v", len(set), set)
+		t.Fatalf("same-block two joins via AcceptProof: got %d %+v", len(set), set)
 	}
 }
 

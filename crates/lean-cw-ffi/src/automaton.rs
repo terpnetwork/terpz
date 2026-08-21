@@ -1,18 +1,14 @@
 use crate::callbacks::{RawCallbacks, DIGEST_LEN};
 use commonware_actor::Feedback;
 use commonware_consensus::{
-    Automaton as Au, CertifiableAutomaton as CAu, Epochable, Relay as Re, Reporter as Rp, Viewable,
     simplex::{
-        Plan,
         types::{Activity, Context},
+        Plan,
     },
     types::{Epoch, View},
+    Automaton as Au, CertifiableAutomaton as CAu, Epochable, Relay as Re, Reporter as Rp, Viewable,
 };
-use commonware_cryptography::{
-    Hasher, Sha256,
-    ed25519::PublicKey,
-    sha256::Digest,
-};
+use commonware_cryptography::{ed25519::PublicKey, sha256::Digest, Hasher, Sha256};
 use commonware_p2p::{Recipients, Sender};
 use commonware_utils::channel::oneshot;
 use std::{
@@ -22,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-pub type Scheme = commonware_consensus::simplex::scheme::ed25519::Scheme;
+pub type Scheme = crate::scheme::WeightedScheme;
 
 #[derive(Clone)]
 pub struct App<S>
@@ -96,9 +92,7 @@ where
             } else {
                 let hashed = Sha256::hash(&[&payload]);
                 if hashed.as_ref() != digest.as_ref() {
-                    tracing::warn!(
-                        "propose digest mismatch; using hash of payload"
-                    );
+                    tracing::warn!("propose digest mismatch; using hash of payload");
                     store.lock().unwrap().insert(hashed, payload);
                     let _ = response.send(hashed);
                     return;
@@ -147,10 +141,22 @@ where
     ) -> oneshot::Receiver<bool> {
         let (response, receiver) = oneshot::channel();
         let cb = self.cb;
+        let store = self.store.clone();
         let epoch = round.epoch().get();
         let view = round.view().get();
         let digest_raw = Self::digest_bytes(&payload);
         thread::spawn(move || {
+            let bytes = store
+                .lock()
+                .unwrap()
+                .get(&payload)
+                .cloned()
+                .unwrap_or_default();
+            if crate::cert::contains_dstw(&bytes) {
+                tracing::warn!("certify rejected Dummy DSTW");
+                let _ = response.send(false);
+                return;
+            }
             let ok = cb.certify(epoch, view, &digest_raw);
             let _ = response.send(ok);
         });
@@ -195,12 +201,17 @@ where
         self.cb.report(kind, epoch.get(), view.get(), &digest);
         if kind == 6 {
             crate::engine::HEIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if let Some(bytes) = self.get_payload(&Digest(digest)) {
-                self.cb
-                    .finalize(epoch.get(), view.get(), &digest, &bytes);
-            } else {
-                self.cb.finalize(epoch.get(), view.get(), &digest, &[]);
-            }
+            let (lcert, raw) = match &activity {
+                Activity::Finalization(v) => (
+                    crate::cert::encode_lcert(v),
+                    crate::scheme::encode_finalization(v),
+                ),
+                _ => (Vec::new(), Vec::new()),
+            };
+            crate::engine::persist_finalization(raw, lcert.clone());
+            let payload = self.get_payload(&Digest(digest)).unwrap_or_default();
+            self.cb
+                .finalize(epoch.get(), view.get(), &digest, &payload, &lcert);
         }
         Feedback::Ok
     }

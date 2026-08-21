@@ -21,9 +21,7 @@ func TestLeaveAfterJoinDoesNotRejoin(t *testing.T) {
 	if !ok {
 		t.Fatal("join lnpr")
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinBlob(t, k, blob)
 	if n := countSetBits(k); n != 3 {
 		t.Fatalf("after JOIN bits=%d want 3", n)
 	}
@@ -42,9 +40,7 @@ func TestLeaveAfterJoinDoesNotRejoin(t *testing.T) {
 	if !sawZero {
 		t.Fatalf("LEAV must be weight-0 on LNPR: %+v", subjectsBrief(blob))
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinBlob(t, k, blob)
 	if n := countSetBits(k); n != 2 {
 		t.Fatalf("after LEAV bits=%d want 2", n)
 	}
@@ -53,9 +49,7 @@ func TestLeaveAfterJoinDoesNotRejoin(t *testing.T) {
 	if !ok {
 		t.Fatal("post lnpr")
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinBlob(t, k, blob)
 	if n := countSetBits(k); n != 2 {
 		t.Fatalf("JOIN file re-admitted leaver bits=%d want 2", n)
 	}
@@ -66,9 +60,7 @@ func TestLeaveAfterJoinDoesNotRejoin(t *testing.T) {
 	if !ok {
 		t.Fatal("recheck lnpr")
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinBlob(t, k, blob)
 	if n := countSetBits(k); n != 2 {
 		t.Fatalf("Recheck JOIN re-admitted leaver bits=%d want 2", n)
 	}

@@ -1,10 +1,11 @@
 use crate::{
     automaton::{recv_payloads, App, Scheme},
     callbacks::RawCallbacks,
+    scheme::WeightedScheme,
 };
-use commonware_codec::DecodeExt;
+use commonware_codec::{DecodeExt, Encode};
 use commonware_consensus::{
-    simplex::{self, elector::RoundRobin, Floor, ForwardingPolicy},
+    simplex::{self, elector::RoundRobin, ForwardingPolicy},
     types::{Epoch, ViewDelta},
 };
 use commonware_cryptography::{ed25519, Hasher, Sha256, Signer};
@@ -16,7 +17,7 @@ use commonware_parallel::Sequential;
 use commonware_runtime::{
     buffer::paged::CacheRef, tokio, Quota, Runner as _, Spawner, Supervisor as _,
 };
-use commonware_utils::{channel::oneshot, union, NZU16, NZU32, NZUsize, TryCollect, ordered::Set};
+use commonware_utils::{channel::oneshot, ordered::Set, union, NZUsize, TryCollect, NZU16, NZU32};
 use std::{
     net::{SocketAddr, ToSocketAddrs},
     str::FromStr,
@@ -33,6 +34,9 @@ pub static RUNNING: AtomicBool = AtomicBool::new(false);
 pub static HEIGHT: AtomicU64 = AtomicU64::new(0);
 pub static EPOCH: AtomicU64 = AtomicU64::new(0);
 static STOP: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
+static FLOOR_PATH: Mutex<Option<String>> = Mutex::new(None);
+static LAST_FINALIZATION: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+static LAST_LCERT: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
 #[derive(Clone)]
 pub struct StartCfg {
@@ -42,12 +46,72 @@ pub struct StartCfg {
     pub storage_dir: String,
     pub namespace: String,
     pub participants: Vec<[u8; 32]>,
+    pub weights: Vec<u64>,
     pub epoch: u64,
+    pub floor_path: String,
+    pub floor_cert: Vec<u8>,
 }
 
-pub fn genesis_digest(epoch: u64) -> commonware_cryptography::sha256::Digest {
-    let ep = epoch.to_be_bytes();
-    Sha256::hash(&[b"lean-cw-ffi-genesis", &ep])
+pub fn genesis_digest() -> commonware_cryptography::sha256::Digest {
+    // True genesis only. Period rotation pins Floor to the previous certificate.
+    Sha256::hash(&[b"_LEAN_CW_SIMPLEX"])
+}
+
+pub fn persist_finalization(raw: Vec<u8>, lcert: Vec<u8>) {
+    if !raw.is_empty() {
+        *LAST_FINALIZATION.lock().unwrap() = Some(raw.clone());
+        if let Some(path) = FLOOR_PATH.lock().unwrap().clone() {
+            if let Err(e) = std::fs::write(&path, &raw) {
+                tracing::warn!(%e, %path, "persist last finalization");
+            }
+        }
+    }
+    if !lcert.is_empty() {
+        *LAST_LCERT.lock().unwrap() = Some(lcert);
+    }
+}
+
+pub fn last_lcert() -> Option<Vec<u8>> {
+    LAST_LCERT.lock().unwrap().clone()
+}
+
+pub fn last_finalization() -> Option<Vec<u8>> {
+    LAST_FINALIZATION.lock().unwrap().clone()
+}
+
+fn choose_floor(
+    scheme: &WeightedScheme,
+    epoch: u64,
+    floor_cert: &[u8],
+) -> commonware_consensus::simplex::Floor<Scheme, commonware_cryptography::sha256::Digest> {
+    use commonware_consensus::{simplex::Floor, Epochable, Viewable};
+    if floor_cert.is_empty() {
+        return Floor::Genesis(genesis_digest());
+    }
+    match crate::scheme::decode_finalization(scheme, floor_cert) {
+        Some(f) if f.epoch().get() == epoch => {
+            tracing::info!(
+                epoch,
+                view = f.view().get(),
+                "Floor::Finalized previous certificate"
+            );
+            Floor::Finalized(f)
+        }
+        Some(f) => {
+            // New epoch: views restart; certified chain pins to previous cert digest.
+            tracing::info!(
+                prev_epoch = f.epoch().get(),
+                epoch,
+                "Floor::Genesis pinned to previous certificate"
+            );
+            let pin = f.encode();
+            Floor::Genesis(Sha256::hash(&[pin.as_ref()]))
+        }
+        None => {
+            tracing::warn!("floor cert decode failed; pin hash of bytes");
+            Floor::Genesis(Sha256::hash(&[floor_cert]))
+        }
+    }
 }
 
 pub fn parse_participants(bytes: &[u8]) -> Result<Vec<[u8; 32]>, String> {
@@ -74,7 +138,6 @@ fn decode_pk(raw: &[u8; 32]) -> Result<ed25519::PublicKey, String> {
 fn decode_sk(raw: &[u8; 32]) -> Result<ed25519::PrivateKey, String> {
     ed25519::PrivateKey::decode(raw.as_slice()).map_err(|e| format!("private key: {e}"))
 }
-
 
 fn parse_bind_public(spec: &str) -> Result<(SocketAddr, SocketAddr), String> {
     let spec = spec.trim();
@@ -109,9 +172,7 @@ fn parse_sock(s: &str) -> Result<SocketAddr, String> {
     Ok(addrs.remove(0))
 }
 
-fn parse_bootstrappers(
-    spec: &str,
-) -> Result<Vec<(ed25519::PublicKey, Ingress)>, String> {
+fn parse_bootstrappers(spec: &str) -> Result<Vec<(ed25519::PublicKey, Ingress)>, String> {
     let mut out = Vec::new();
     if spec.is_empty() {
         return Ok(out);
@@ -126,7 +187,10 @@ fn parse_bootstrappers(
             .ok_or_else(|| format!("bootstrapper {part} wants pkhex@host:port"))?;
         let pk_bytes = hex_decode(hex_pk)?;
         if pk_bytes.len() != 32 {
-            return Err(format!("bootstrapper pk must be 32 bytes, got {}", pk_bytes.len()));
+            return Err(format!(
+                "bootstrapper pk must be 32 bytes, got {}",
+                pk_bytes.len()
+            ));
         }
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&pk_bytes);
@@ -183,6 +247,14 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
         return Err("lean-cw-ffi already running".into());
     }
     EPOCH.store(cfg.epoch, Ordering::SeqCst);
+    *FLOOR_PATH.lock().unwrap() = if cfg.floor_path.is_empty() {
+        None
+    } else {
+        Some(cfg.floor_path.clone())
+    };
+    if !cfg.floor_cert.is_empty() {
+        *LAST_FINALIZATION.lock().unwrap() = Some(cfg.floor_cert.clone());
+    }
 
     let bootstrappers = parse_bootstrappers(&cfg.bootstrappers)?;
     let max_peers_per_set = authenticated::peer_set_limit(&validators, &signer.public_key());
@@ -226,8 +298,14 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
             let (payload_sender, payload_receiver) = network.register(3, message_rate);
 
             let consensus_ns = union(&ns, b"_CONSENSUS");
-            let scheme = Scheme::signer(&consensus_ns, validators.clone(), signer.clone())
-                .expect("private key must be in participants");
+            let scheme = WeightedScheme::signer(
+                &consensus_ns,
+                validators.clone(),
+                signer.clone(),
+                cfg.weights.clone(),
+            )
+            .expect("private key must be in participants");
+            let floor = choose_floor(&scheme, cfg.epoch, &cfg.floor_cert);
 
             let app = App::new(cb);
             app.set_payload_sender(payload_sender.clone());
@@ -248,7 +326,7 @@ pub fn run_blocking(cfg: StartCfg, cb: RawCallbacks) -> Result<(), String> {
                 partition: format!("lean-{}", cfg.epoch),
                 mailbox_size: NZUsize!(1024),
                 epoch: Epoch::new(cfg.epoch),
-                floor: Floor::Genesis(genesis_digest(cfg.epoch)),
+                floor,
                 replay_buffer: NZUsize!(1024 * 1024),
                 write_buffer: NZUsize!(1024 * 1024),
                 leader_timeout: Duration::from_millis(800),

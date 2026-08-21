@@ -181,9 +181,7 @@ func TestLEAN5_JoinLeaveStayLNPRSubjects(t *testing.T) {
 	if !found {
 		t.Fatal("JOIN must be an LNPR subject")
 	}
-	if err := k.ApplyLNPR(blob); err != nil {
-		t.Fatalf("JOIN apply: %v", err)
-	}
+	applyJoinBlob(t, k, blob)
 	k.NoteMembershipTx(types.EncodeLeave(types.LeaveBlob{Period: 0, Subject: j0}))
 	raw = k.buildLNPR(0)
 	blob, ok = types.DecodeLNPR(raw)

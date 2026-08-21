@@ -105,3 +105,62 @@ func bitGet(bf []byte, idx uint32) bool {
 	}
 	return bf[i]&(1<<uint(idx%8)) != 0
 }
+
+// BondedParticipantsWeights returns sorted 32-byte pubkeys and parallel EB weights.
+func BondedParticipantsWeights(q StoreQuery, epoch uint64) ([]byte, []uint64) {
+	pks := BondedParticipants(q, epoch)
+	if len(pks) == 0 {
+		return nil, nil
+	}
+	n := len(pks) / 32
+	weights := make([]uint64, n)
+	for i := 0; i < n; i++ {
+		weights[i] = 1
+	}
+	if q == nil {
+		return pks, weights
+	}
+	path := fmt.Sprintf("/store/%s/subspace", types.StoreKey)
+	idxRaw := q(path, []byte{types.DepositIndexPrefix})
+	ebRaw := q(path, []byte{types.EBPrefix})
+	idxPairs, _ := types.DecodeSubspacePairs(idxRaw)
+	ebPairs, _ := types.DecodeSubspacePairs(ebRaw)
+	ebByIdx := map[uint32]uint64{}
+	for _, p := range ebPairs {
+		if len(p.Key) != 5 || p.Key[0] != types.EBPrefix || len(p.Value) < 1 {
+			continue
+		}
+		idx := types.GetU32(p.Key[1:])
+		ebByIdx[idx] = uint64(p.Value[0])
+	}
+	subjIdx := map[string]uint32{}
+	for _, p := range idxPairs {
+		if len(p.Key) < 2 || p.Key[0] != types.DepositIndexPrefix {
+			continue
+		}
+		subj := p.Key[1:]
+		if len(subj) != 32 || len(p.Value) < 5 {
+			continue
+		}
+		subjIdx[string(subj)] = types.GetU32(p.Value[len(p.Value)-4:])
+	}
+	for i := 0; i < n; i++ {
+		subj := pks[i*32 : (i+1)*32]
+		if idx, ok := subjIdx[string(subj)]; ok {
+			if w, ok := ebByIdx[idx]; ok && w > 0 {
+				weights[i] = w
+			}
+		}
+	}
+	return pks, weights
+}
+
+func (d *Driver) ParticipantsWeights(epoch uint64) ([]byte, []uint64) {
+	d.mu.Lock()
+	q := d.storeQuery
+	d.mu.Unlock()
+	if q == nil {
+		return nil, nil
+	}
+	return BondedParticipantsWeights(q, epoch)
+}

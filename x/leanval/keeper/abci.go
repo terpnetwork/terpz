@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -135,18 +136,31 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 	}
 	roots := k.LastObjectRoots()
 	pairs := foldPairStrings(period, subs, roots)
-	extras := 0
-	for _, s := range subs {
-		if _, ok := known[string(s.Subject)]; !ok && s.Weight > 0 {
-			extras++
-		}
-	}
 	fold, foldErr := ProveSameStatementFold(pairs)
 	useFold := foldErr == nil && len(fold) > 0
-	// LEAN-5: Dummy DSTW must not ride in the same blob as a Stwo fold.
-	// Lab JOIN extras use Dummy only when we skip the aggregate.
-	if useFold && extras > 0 && k.AllowDummy && len(subs) <= types.MaxRawStarksPerLNPR {
-		useFold = false
+	// JOIN extras: named STWO (prover_id=2). Dummy DSTW is a reject fixture.
+	extraIdx := k.nextDepositIndex()
+	for i, s := range subs {
+		if _, ok := known[string(s.Subject)]; ok || s.Weight <= 0 {
+			continue
+		}
+		proof := k.joinProofFor(s.Subject)
+		if len(proof) > 0 && bytes.Contains(proof, []byte("DSTW")) {
+			proof = nil
+		}
+		if len(proof) == 0 {
+			eb := uint8(0)
+			if s.Weight > 0 && s.Weight <= 255 {
+				eb = uint8(s.Weight)
+			} else if s.Weight > 255 {
+				eb = 255
+			}
+			if p, err := proveValsetStwo(period, uint64(extraIdx), eb, s.Subject); err == nil {
+				proof = p
+			}
+		}
+		subs[i].Proof = proof
+		extraIdx++
 	}
 	if useFold {
 		idx := 0
@@ -161,25 +175,32 @@ func (k *Keeper) buildLNPR(period uint64) []byte {
 		} else {
 			subs[idx].Proof = fold
 		}
-		// Roster members are included via the fold (bitfield root). JOIN extras
-		// are not in that root; Dummy DSTW must not mix with the aggregate.
 		return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
 	}
-	// JOIN extras stay on the roster even if Dummy is closed (unverifiable).
-	// Fold of current object roots does not prove them. Dummy extras bind
-	// store-sourced roots (waist). Do not hide a stall with genesis-only.
-	// LEAN-5: cap raw Dummy/STWO so a 100-validator slot is not 100 proofs.
+	// No fold: roster members still must not carry Dummy on the Commonware path.
 	if k.AllowDummy {
 		raw := 0
 		for i := range subs {
 			if raw >= types.MaxRawStarksPerLNPR {
 				break
 			}
+			if len(subs[i].Proof) > 0 {
+				continue
+			}
 			subs[i].Proof = DummyStwoProveBoundRoots(period, subs[i].Subject, subs[i].Weight, roots)
 			raw++
 		}
 	}
 	return types.EncodeLNPR(types.LNPRBlob{Period: period, Subjects: subs})
+}
+
+func (k *Keeper) joinProofFor(subj []byte) []byte {
+	for _, tx := range k.PendingMembershipTxs() {
+		if j, ok := types.DecodeJoin(tx); ok && bytes.Equal(j.Subject, subj) {
+			return j.Proof
+		}
+	}
+	return nil
 }
 
 // InjectLocalProofs is how a proposer attaches dummy proofs before Prepare.

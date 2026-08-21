@@ -58,3 +58,24 @@ func TestDummyStwoForgedWeightFails(t *testing.T) {
 		t.Fatalf("forged weight LNPR must REJECT, got %v", resp.Status)
 	}
 }
+
+func TestDummyJoinExtraRejected(t *testing.T) {
+	k := NewKeeper(NewMemStore(), DummyStwoGo{})
+	k.AllowDummy = true
+	g := make([]byte, 32)
+	g[0] = 1
+	j := make([]byte, 32)
+	j[0] = 2
+	k.AcceptProof(0, g, 10)
+	roots := k.LastObjectRoots()
+	blob := types.LNPRBlob{
+		Period: 0,
+		Subjects: []types.SubjectProof{
+			{Subject: g, Weight: 10, Proof: DummyStwoProveBoundRoots(0, g, 10, roots)},
+			{Subject: j, Weight: 10, Proof: DummyStwoProveBoundRoots(0, j, 10, roots)},
+		},
+	}
+	if err := k.VerifyLNPR(blob); err == nil {
+		t.Fatal("Dummy DSTW JOIN extra must reject")
+	}
+}

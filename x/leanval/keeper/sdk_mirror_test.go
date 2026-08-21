@@ -17,7 +17,7 @@ func TestLean_DelegateDoesNotChangeVPWhenOwnsValset(t *testing.T) {
 	// Tokens stay F1; BondedSet changes only on accepted proof, not on a delegate-shaped PutSubject.
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	k.SetOwnsValset(true)
-	subj := []byte("validator-aaaaaaaaaaaaaaaaaa")
+	subj := append(append([]byte("validator-aaaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32], make([]byte, 32)...)[:32]
 	k.AcceptProof(1, subj, 10)
 	before := k.QueryBondedSet(1)
 	if len(before) != 1 || before[0].Weight != 10 {
@@ -37,8 +37,8 @@ func TestLean_DelegateDoesNotChangeVPWhenOwnsValset(t *testing.T) {
 func TestLean_RedelegateDoesNotChangeBondedSet(t *testing.T) {
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	k.SetOwnsValset(true)
-	src := []byte("src-val-aaaaaaaaaaaaaaaaaaaa")
-	dst := []byte("dst-val-aaaaaaaaaaaaaaaaaaaa")
+	src := append([]byte("src-val-aaaaaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
+	dst := append([]byte("dst-val-aaaaaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	k.AcceptProof(1, src, 8)
 	k.AcceptProof(1, dst, 2)
 	snap := append([]SubjectPower(nil), k.QueryBondedSet(1)...)
@@ -63,7 +63,7 @@ func TestLean_UnbondingMaturityDoesNotTouchBondedSet(t *testing.T) {
 func TestLean_CreateValidatorDoesNotEmitBondedSet(t *testing.T) {
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	k.SetOwnsValset(true)
-	subj := []byte("create-val-aaaaaaaaaaaaaaaaa")
+	subj := append([]byte("create-val-aaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	// CreateValidator stores tokens only — no AcceptProof.
 	k.PutSubject(1, subj, 100)
 	set := k.QueryBondedSet(1)
@@ -75,7 +75,7 @@ func TestLean_CreateValidatorDoesNotEmitBondedSet(t *testing.T) {
 func TestLean_JailDoesNotAutoZeroBondedSet(t *testing.T) {
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	k.SetOwnsValset(true)
-	subj := []byte("jailed-val-aaaaaaaaaaaaaaaaa")
+	subj := append([]byte("jailed-val-aaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	k.AcceptProof(1, subj, 11)
 	// Jail is stock staking; we do not infer BondedSet from jailed.
 	if k.QueryBondedSet(1)[0].Weight != 11 {
@@ -90,7 +90,7 @@ func TestLean_TombstoneUnjailStillStock(t *testing.T) {
 func TestLean_TokensToConsensusPowerIgnoredWhenOwnsValset(t *testing.T) {
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	k.SetOwnsValset(true)
-	subj := []byte("tokens-val-aaaaaaaaaaaaaaaaa")
+	subj := append([]byte("tokens-val-aaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	k.AcceptProof(1, subj, 3)
 	// TokensToConsensusPower would be huge for 1e12 tokens; BondedSet is proven EB.
 	if k.QueryBondedSet(1)[0].Weight != 3 {
@@ -105,7 +105,7 @@ func TestLean_StakingPowerIndexNotLastValidatorPower(t *testing.T) {
 func TestLean_InstantSlashStillAllowed(t *testing.T) {
 	// Instant slash (EB=0) remains allowed outside STARK — AcceptProof weight 0.
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
-	subj := []byte("slash-val-aaaaaaaaaaaaaaaaaa")
+	subj := append([]byte("slash-val-aaaaaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	k.AcceptProof(1, subj, 0)
 	if k.QueryBondedSet(1)[0].Weight != 0 {
 		t.Fatal("instant slash EB=0 allowed")
@@ -180,7 +180,7 @@ func TestLean_BeginBlockRewardsAfterLeanWrap(t *testing.T) {
 func TestLean_LateProofNotSlashed(t *testing.T) {
 	k := NewKeeper(NewMemStore(), ClosedVerifier{})
 	period := uint64(4)
-	subj := []byte("late-subject-aaaaaaaaaaaaaaa")
+	subj := append([]byte("late-subject-aaaaaaaaaaaaaaa"), make([]byte, 32)...)[:32]
 	k.PutSubject(period, subj, 100)
 	set := k.BondedSet(period)
 	if len(set) != 1 || set[0].Weight != 0 || set[0].HasProof {

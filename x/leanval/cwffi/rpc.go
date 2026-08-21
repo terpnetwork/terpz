@@ -29,6 +29,10 @@ func ServeRPC(listen string, d *Driver) error {
 		h := parseHeightQuery(r)
 		writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: payloadResult(d, h)})
 	})
+	mux.HandleFunc("/lean/certificate", func(w http.ResponseWriter, r *http.Request) {
+		h := parseHeightQuery(r)
+		writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: certificateResult(d, h)})
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/status" {
 			writeJSON(w, statusResult(d))
@@ -40,6 +44,10 @@ func ServeRPC(listen string, d *Driver) error {
 		}
 		if r.URL.Path == "/payload" || strings.HasPrefix(r.URL.Path, "/payload") {
 			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: payloadResult(d, parseHeightQuery(r))})
+			return
+		}
+		if r.URL.Path == "/lean/certificate" || strings.HasPrefix(r.URL.Path, "/lean/certificate") {
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: json.RawMessage("-1"), Result: certificateResult(d, parseHeightQuery(r))})
 			return
 		}
 		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/broadcast_tx_sync") {
@@ -63,6 +71,8 @@ func ServeRPC(listen string, d *Driver) error {
 			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: blockResult(d, parseHeightJSON(req.Params))})
 		case "payload":
 			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: payloadResult(d, parseHeightJSON(req.Params))})
+		case "lean_certificate", "lean/certificate":
+			writeJSON(w, rpcResp{JSONRPC: "2.0", ID: req.ID, Result: certificateResult(d, parseHeightJSON(req.Params))})
 		case "broadcast_tx_sync", "broadcast_tx_commit", "broadcast_tx_async":
 			tx, err := parseTxParam(req.Params)
 			if err != nil {
@@ -233,37 +243,96 @@ func parseHeightJSON(params json.RawMessage) int64 {
 }
 
 func payloadResult(d *Driver, height int64) map[string]any {
-	var payload []byte
+	var payload, cert []byte
 	h := height
 	if d != nil {
-		payload, h, _ = d.PayloadAt(height)
+		payload, h, cert = d.PayloadAt(height)
 	}
 	b64 := ""
 	if len(payload) > 0 {
 		b64 = base64.StdEncoding.EncodeToString(payload)
 	}
+	c64 := ""
+	if len(cert) > 0 {
+		c64 = base64.StdEncoding.EncodeToString(cert)
+	}
 	return map[string]any{
-		"height":  strconv.FormatInt(h, 10),
-		"payload": b64,
+		"height":      strconv.FormatInt(h, 10),
+		"payload":     b64,
+		"certificate": c64,
+	}
+}
+
+func certificateResult(d *Driver, height int64) map[string]any {
+	var cert, payload []byte
+	h := height
+	if d != nil {
+		payload, h, cert = d.PayloadAt(height)
+		if len(cert) == 0 {
+			cert = d.LastCertificateRaw()
+		}
+	}
+	c64 := ""
+	if len(cert) > 0 {
+		c64 = base64.StdEncoding.EncodeToString(cert)
+	}
+	parsed, _ := ParseLeanCert(cert)
+	pks := []byte(nil)
+	if d != nil {
+		pks = d.LastParticipants()
+	}
+	signers := make([]map[string]any, 0, len(parsed.Signers))
+	for _, s := range parsed.Signers {
+		pk := ""
+		off := int(s.Index) * 32
+		if off >= 0 && off+32 <= len(pks) {
+			pk = base64.StdEncoding.EncodeToString(pks[off : off+32])
+		}
+		signers = append(signers, map[string]any{
+			"index":     s.Index,
+			"pubkey":    pk,
+			"signature": base64.StdEncoding.EncodeToString(s.Signature),
+		})
+	}
+	_ = payload
+	return map[string]any{
+		"height":      strconv.FormatInt(h, 10),
+		"epoch":       parsed.Epoch,
+		"view":        parsed.View,
+		"certificate": c64,
+		"signers":     signers,
 	}
 }
 
 func blockResult(d *Driver, height int64) map[string]any {
 	h := int64(0)
-	n := 0
-	var payload []byte
+	var payload, cert []byte
 	if d != nil {
-		payload, h, n = d.PayloadAt(height)
+		payload, h, cert = d.PayloadAt(height)
 		if h == 0 {
 			h = d.Height()
-			n = d.LastCommitSigs()
+			cert = d.LastCertificateRaw()
 		}
 	}
-	sigs := make([]map[string]any, 0, n)
-	for i := 0; i < n; i++ {
+	parsed, _ := ParseLeanCert(cert)
+	pks := []byte(nil)
+	if d != nil {
+		pks = d.LastParticipants()
+	}
+	sigs := make([]map[string]any, 0, len(parsed.Signers))
+	for _, s := range parsed.Signers {
+		if isZeroSig(s.Signature) {
+			continue
+		}
+		addr := ""
+		off := int(s.Index) * 32
+		if off >= 0 && off+32 <= len(pks) {
+			addr = strings.ToUpper(hex.EncodeToString(pks[off : off+32]))
+		}
 		sigs = append(sigs, map[string]any{
-			"block_id_flag": 2,
-			"signature":     "AA==",
+			"block_id_flag":     2,
+			"validator_address": addr,
+			"signature":         base64.StdEncoding.EncodeToString(s.Signature),
 		})
 	}
 	txs := []string{}
@@ -271,6 +340,10 @@ func blockResult(d *Driver, height int64) map[string]any {
 	if len(payload) > 0 {
 		b64 = base64.StdEncoding.EncodeToString(payload)
 		txs = []string{b64}
+	}
+	c64 := ""
+	if len(cert) > 0 {
+		c64 = base64.StdEncoding.EncodeToString(cert)
 	}
 	return map[string]any{
 		"block": map[string]any{
@@ -284,6 +357,7 @@ func blockResult(d *Driver, height int64) map[string]any {
 				"signatures": sigs,
 			},
 		},
-		"payload": b64,
+		"payload":     b64,
+		"certificate": c64,
 	}
 }

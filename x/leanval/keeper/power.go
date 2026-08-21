@@ -270,6 +270,10 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 			if fold != nil {
 				return errProof("Dummy DSTW in an aggregate must fail the batch")
 			}
+			_, inRoster := known[string(s.Subject)]
+			if !inRoster && s.Weight > 0 && len(known) > 0 {
+				return errProof("Dummy DSTW rejected on JOIN extra")
+			}
 		}
 		if len(s.Proof) > 0 && !isFoldProof(s.Proof) {
 			raw++
@@ -278,11 +282,17 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 			}
 		}
 		_, inRoster := known[string(s.Subject)]
-		extra := !inRoster && s.Weight > 0
+		extra := !inRoster && s.Weight > 0 && len(known) > 0
 		if extra {
 			// Fold of current object roots does not prove JOIN subjects.
 			if len(s.Proof) == 0 || isFoldProof(s.Proof) {
 				return errProof("unprovable extra subject")
+			}
+			if bytes.Contains(s.Proof, []byte("DSTW")) {
+				return errProof("Dummy DSTW rejected on JOIN extra")
+			}
+			if len(s.Proof) < 4 || string(s.Proof[:4]) != "STWO" {
+				return errProof("JOIN extra requires named STWO (prover_id=2)")
 			}
 			if len(s.Proof) > types.MaxProofBytes {
 				return errProof("proof too large")

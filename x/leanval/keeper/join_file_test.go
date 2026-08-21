@@ -106,12 +106,8 @@ func TestJoinFilesApplyLNPRBitsBothThenLeaveDrops(t *testing.T) {
 		t.Fatalf("last-prepare lnpr_subjects=%d want >=4", rec.LNPRSubjects)
 	}
 
-	if err := proposer.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("proposer ApplyLNPR: %v", err)
-	}
-	if err := replica.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("replica ApplyLNPR: %v", err)
-	}
+	applyJoinTxs(t, proposer, resp.Txs)
+	applyJoinTxs(t, replica, resp.Txs)
 	pb, rb := bitCount(proposer), bitCount(replica)
 	if pb < 4 || rb < 4 {
 		t.Fatalf("bits proposer=%d replica=%d want both >=4", pb, rb)
@@ -136,12 +132,8 @@ func TestJoinFilesApplyLNPRBitsBothThenLeaveDrops(t *testing.T) {
 	if leaveW != 0 {
 		t.Fatalf("LEAV must be an LNPR subject with weight 0, got %d subjects=%+v", leaveW, subjectsBrief(blob2))
 	}
-	if err := proposer.ProcessInjectedLNPR(resp2.Txs); err != nil {
-		t.Fatalf("proposer ApplyLNPR leave: %v", err)
-	}
-	if err := replica.ProcessInjectedLNPR(resp2.Txs); err != nil {
-		t.Fatalf("replica ApplyLNPR leave: %v", err)
-	}
+	applyJoinTxs(t, proposer, resp2.Txs)
+	applyJoinTxs(t, replica, resp2.Txs)
 	pb2, rb2 := bitCount(proposer), bitCount(replica)
 	if pb2 != pb-1 || rb2 != rb-1 {
 		t.Fatalf("after LEAV bits proposer=%d replica=%d want both %d (drop by 1)", pb2, rb2, pb-1)

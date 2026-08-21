@@ -61,7 +61,9 @@ typedef void (*lean_cw_finalize_fn)(
     uint64_t view,
     const uint8_t digest[LEAN_CW_DIGEST_LEN],
     const uint8_t *payload,
-    size_t payload_len);
+    size_t payload_len,
+    const uint8_t *certificate,
+    size_t certificate_len);
 
 /* Concatenated 32-byte ed25519 public keys. Caller mallocs *pk_out; Rust frees. */
 typedef int (*lean_cw_participants_fn)(
@@ -88,7 +90,12 @@ typedef struct lean_cw_cfg {
     const char *namespace;
     const uint8_t *participants;
     size_t participants_len;
+    const uint64_t *weights;
+    size_t weights_len;
     uint64_t epoch;
+    const char *floor_path;
+    const uint8_t *floor_cert;
+    size_t floor_cert_len;
 } lean_cw_cfg;
 
 int lean_cw_start(const lean_cw_cfg *cfg, const lean_cw_callbacks *cb);
@@ -97,6 +104,14 @@ int lean_cw_running(void);
 uint64_t lean_cw_height(void);
 uint64_t lean_cw_epoch(void);
 void lean_cw_set_height(uint64_t height);
+size_t lean_cw_last_certificate(uint8_t **out);
+int lean_cw_verify_finalization(
+    const uint8_t *participants,
+    size_t participants_len,
+    const uint64_t *weights,
+    size_t weights_len,
+    const uint8_t *cert,
+    size_t cert_len);
 void lean_cw_free(uint8_t *p);
 
 #ifdef __cplusplus

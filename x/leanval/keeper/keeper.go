@@ -1,6 +1,9 @@
 package keeper
 
 import (
+	"os"
+	"strings"
+
 	abci "github.com/cometbft/cometbft/abci/types"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -36,7 +39,12 @@ func NewKeeper(store Store, v Verifier) *Keeper {
 	if store == nil {
 		store = NewMemStore()
 	}
-	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: true}
+	allowDummy := true
+	cv := strings.ToLower(strings.TrimSpace(os.Getenv("LEAN_CONSENSUS")))
+	if cv == "commonware" || cv == "cw" || cv == "simplex" {
+		allowDummy = false
+	}
+	k := &Keeper{store: store, Verifier: v, RequireLNPR: true, AllowDummy: allowDummy}
 	// Reset process RAM only. Never delete membership files: CLI NewKeeper
 	// shares the container dir with the running node.
 	membershipQ.mu.Lock()

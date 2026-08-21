@@ -37,12 +37,10 @@ func TestProcessRejectThenValidJoinResumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if processStatus(t, k, 5, resp.Txs) != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatal("subsequent round with Dummy extras must ACCEPT")
+	if processStatus(t, k, 5, resp.Txs) != abci.ResponseProcessProposal_REJECT {
+		t.Fatal("subsequent round Dummy extras must REJECT")
 	}
-	if err := k.ProcessInjectedLNPR(resp.Txs); err != nil {
-		t.Fatalf("Apply after resume: %v", err)
-	}
+	applyJoinTxs(t, k, resp.Txs)
 	if n := bitCount(k); n != 3 {
 		t.Fatalf("JOIN after stall resume bits=%d want 3", n)
 	}

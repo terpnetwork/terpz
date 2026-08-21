@@ -6,6 +6,12 @@ func (k *Keeper) InitGenesis(gs types.GenesisState) {
 	if err := gs.Validate(); err != nil {
 		panic(err)
 	}
+	n := gs.BlocksPerPeriod
+	if n <= 0 {
+		n = types.BlocksPerPeriod
+	}
+	k.live().Set(types.PeriodParamKey(), types.PutI64(n))
+	types.SetBlocksPerPeriod(n)
 	k.SetOwnsValset(gs.OwnsValset)
 	if len(gs.VerifierAddr) > 0 {
 		k.SetModuleVerifier(gs.VerifierAddr, gs.LeanCodeID)
@@ -25,7 +31,7 @@ func (k *Keeper) InitGenesis(gs types.GenesisState) {
 }
 
 func (k *Keeper) ExportGenesis() types.GenesisState {
-	gs := types.GenesisState{OwnsValset: k.OwnsValset()}
+	gs := types.GenesisState{OwnsValset: k.OwnsValset(), BlocksPerPeriod: types.BlocksPerPeriodLive()}
 	for _, s := range k.DebugSubjectsFromBits() {
 		gs.GenesisSubjects = append(gs.GenesisSubjects, types.GenesisSubject{
 			PubKey: append([]byte(nil), s.Subject...),

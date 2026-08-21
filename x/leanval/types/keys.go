@@ -1,9 +1,7 @@
 package types
 
 import (
-	"os"
-	"strconv"
-	"strings"
+	"sync/atomic"
 )
 
 // Store prefixes. Single KV tree — never LastValidatorPowers.
@@ -43,6 +41,8 @@ const (
 	WithdrawCommitPrefix byte = 0x15
 	// NoWithdrawAccPrefix: period(8 BE) -> daily no-withdraw accumulator root.
 	NoWithdrawAccPrefix byte = 0x16
+	// PeriodParamPrefix: int64 blocks_per_period from genesis (not process env).
+	PeriodParamPrefix byte = 0x17
 )
 
 // ObjectRootsSize is deposit(32) || bitfield(32) || eb(32).
@@ -67,6 +67,8 @@ func TestLeanVerifierAcc() []byte { return make([]byte, 20) }
 func OwnsValsetKey() []byte { return []byte{OwnsValsetPrefix} }
 
 func ObjectRootsKey() []byte { return []byte{ObjectRootsPrefix} }
+
+func PeriodParamKey() []byte { return []byte{PeriodParamPrefix} }
 
 func PendingJoinKey(period uint64, subject []byte) []byte {
 	k := make([]byte, 1+8+len(subject))
@@ -156,15 +158,20 @@ func NoWithdrawAccKey(period uint64) []byte {
 	return k
 }
 
-// BlocksPerPeriodLive is BlocksPerPeriod unless LEAN_BLOCKS_PER_PERIOD is set
-// (lab-only; ICT uses 8). Production default stays 600.
-func BlocksPerPeriodLive() int64 {
-	s := strings.TrimSpace(os.Getenv("LEAN_BLOCKS_PER_PERIOD"))
-	if s == "" {
-		return BlocksPerPeriod
+// liveBlocksPerPeriod is the genesis consensus param. Default 600.
+// Two processes with the same genesis must agree; process env is not a fork.
+var liveBlocksPerPeriod atomic.Int64
+
+func SetBlocksPerPeriod(n int64) {
+	if n <= 0 {
+		n = BlocksPerPeriod
 	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n <= 0 {
+	liveBlocksPerPeriod.Store(n)
+}
+
+func BlocksPerPeriodLive() int64 {
+	n := liveBlocksPerPeriod.Load()
+	if n <= 0 {
 		return BlocksPerPeriod
 	}
 	return n

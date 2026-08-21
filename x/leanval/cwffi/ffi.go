@@ -36,7 +36,10 @@ type Config struct {
 	StorageDir    string
 	Namespace     string
 	Participants  []byte // concatenated 32-byte ed25519 pubkeys
+	Weights       []uint64
 	Epoch         uint64
+	FloorPath     string
+	FloorCert     []byte
 }
 
 func Start(drv *Driver, cfg Config) error {
@@ -49,6 +52,7 @@ func Start(drv *Driver, cfg Config) error {
 	engineMu.Lock()
 	engineDrv = drv
 	engineMu.Unlock()
+	drv.SetVerifyCert(VerifyFinalization)
 
 	var ccfg C.lean_cw_cfg
 	for i := 0; i < 32; i++ {
@@ -71,7 +75,20 @@ func Start(drv *Driver, cfg Config) error {
 		ccfg.participants_len = C.size_t(len(cfg.Participants))
 		defer C.free(unsafe.Pointer(ccfg.participants))
 	}
+	if len(cfg.Weights) > 0 {
+		ccfg.weights = (*C.uint64_t)(C.CBytes(uint64Bytes(cfg.Weights)))
+		ccfg.weights_len = C.size_t(len(cfg.Weights))
+		defer C.free(unsafe.Pointer(ccfg.weights))
+	}
 	ccfg.epoch = C.uint64_t(cfg.Epoch)
+	fp := C.CString(cfg.FloorPath)
+	defer C.free(unsafe.Pointer(fp))
+	ccfg.floor_path = fp
+	if len(cfg.FloorCert) > 0 {
+		ccfg.floor_cert = (*C.uint8_t)(C.CBytes(cfg.FloorCert))
+		ccfg.floor_cert_len = C.size_t(len(cfg.FloorCert))
+		defer C.free(unsafe.Pointer(ccfg.floor_cert))
+	}
 
 	var cb C.lean_cw_callbacks
 	C.lean_cw_fill_callbacks(&cb, nil)
@@ -165,7 +182,7 @@ func goLeanCwReport(user unsafe.Pointer, kind C.uint32_t, epoch, view C.uint64_t
 }
 
 //export goLeanCwFinalize
-func goLeanCwFinalize(user unsafe.Pointer, epoch, view C.uint64_t, digest *C.uint8_t, payload *C.uint8_t, payloadLen C.size_t) {
+func goLeanCwFinalize(user unsafe.Pointer, epoch, view C.uint64_t, digest *C.uint8_t, payload *C.uint8_t, payloadLen C.size_t, certificate *C.uint8_t, certificateLen C.size_t) {
 	_ = user
 	d := currentDriver()
 	if d == nil {
@@ -176,7 +193,49 @@ func goLeanCwFinalize(user unsafe.Pointer, epoch, view C.uint64_t, digest *C.uin
 	if payload != nil && payloadLen > 0 {
 		pay = C.GoBytes(unsafe.Pointer(payload), C.int(payloadLen))
 	}
-	d.Finalize(uint64(epoch), uint64(view), dgst, pay)
+	var cert []byte
+	if certificate != nil && certificateLen > 0 {
+		cert = C.GoBytes(unsafe.Pointer(certificate), C.int(certificateLen))
+	}
+	d.Finalize(uint64(epoch), uint64(view), dgst, pay, cert)
+}
+
+func uint64Bytes(w []uint64) []byte {
+	out := make([]byte, 8*len(w))
+	for i, v := range w {
+		out[i*8+0] = byte(v)
+		out[i*8+1] = byte(v >> 8)
+		out[i*8+2] = byte(v >> 16)
+		out[i*8+3] = byte(v >> 24)
+		out[i*8+4] = byte(v >> 32)
+		out[i*8+5] = byte(v >> 40)
+		out[i*8+6] = byte(v >> 48)
+		out[i*8+7] = byte(v >> 56)
+	}
+	return out
+}
+
+// VerifyFinalization asks the Rust scheme adapter (weighted + ed25519).
+func VerifyFinalization(pks []byte, weights []uint64, cert []byte) bool {
+	if len(pks) == 0 || len(cert) == 0 {
+		return false
+	}
+	var wptr *C.uint64_t
+	if len(weights) > 0 {
+		wb := uint64Bytes(weights)
+		wptr = (*C.uint64_t)(C.CBytes(wb))
+		defer C.free(unsafe.Pointer(wptr))
+	}
+	pb := C.CBytes(pks)
+	defer C.free(pb)
+	cb := C.CBytes(cert)
+	defer C.free(cb)
+	rc := C.lean_cw_verify_finalization(
+		(*C.uint8_t)(pb), C.size_t(len(pks)),
+		wptr, C.size_t(len(weights)),
+		(*C.uint8_t)(cb), C.size_t(len(cert)),
+	)
+	return rc == 1
 }
 
 //export goLeanCwParticipants

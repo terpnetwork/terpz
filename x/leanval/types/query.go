@@ -4,11 +4,11 @@ import (
 	fmt "fmt"
 	io "io"
 
+	context "context"
 	proto "github.com/cosmos/gogoproto/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	context "context"
 )
 
 const _ = proto.GoGoProtoPackageIsVersion3

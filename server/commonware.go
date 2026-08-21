@@ -146,8 +146,6 @@ func startCommonware(
 	if len(pks) == 0 {
 		pks = genesisPks
 	}
-	drv.SetCommittee(len(pks) / 32)
-
 	rotateCh := make(chan uint64, 4)
 	drv.SetOnCommit(func(h int64) {
 		cur := leanvaltypes.PeriodFromHeight(h)
@@ -203,10 +201,28 @@ func (e *cwEngine) startEpoch(epoch uint64, pks []byte) error {
 	if skipCommonwareEngine(e.pv, pks) {
 		return fmt.Errorf("local pubkey not in BondedSet for epoch %d", epoch)
 	}
-	e.drv.SetCommittee(len(pks) / 32)
 	dir := filepath.Join(e.storage, fmt.Sprintf("epoch-%d", epoch))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
+	}
+	weights := make([]uint64, len(pks)/32)
+	if wpks, w, ok := func() ([]byte, []uint64, bool) {
+		a, b := e.drv.ParticipantsWeights(epoch)
+		return a, b, len(a) == len(pks)
+	}(); ok {
+		_ = wpks
+		weights = w
+	} else {
+		for i := range weights {
+			weights[i] = 1
+		}
+	}
+	floorPath := filepath.Join(e.storage, "last-finalization")
+	floorCert := e.drv.LastCertificateRaw()
+	if len(floorCert) == 0 {
+		if b, err := os.ReadFile(floorPath); err == nil {
+			floorCert = b
+		}
 	}
 	var last error
 	for i := 0; i < 15; i++ {
@@ -217,7 +233,10 @@ func (e *cwEngine) startEpoch(epoch uint64, pks []byte) error {
 			StorageDir:    dir,
 			Namespace:     "lean-terpz",
 			Participants:  pks,
+			Weights:       weights,
 			Epoch:         epoch,
+			FloorPath:     floorPath,
+			FloorCert:     floorCert,
 		})
 		if last == nil {
 			e.epoch = epoch
@@ -293,9 +312,9 @@ func catchupLoop(ctx context.Context, drv *cwffi.Driver) {
 		if next < 1 {
 			next = 1
 		}
-		payload := fetchPayload(client, base, next)
-		if len(payload) > 0 {
-			drv.ApplyRemote(payload)
+		payload, cert := fetchPayloadAndCert(client, base, next)
+		if len(payload) > 0 && len(cert) > 0 {
+			drv.ApplyRemote(payload, cert)
 			// Period boundary: give the rotator time to Start if we are in BondedSet.
 			h := drv.Height()
 			if leanvaltypes.PeriodFromHeight(h+1) != leanvaltypes.PeriodFromHeight(h) {
@@ -307,8 +326,9 @@ func catchupLoop(ctx context.Context, drv *cwffi.Driver) {
 	}
 }
 
-func fetchPayload(client *http.Client, base string, height int64) []byte {
+func fetchPayloadAndCert(client *http.Client, base string, height int64) (payload, cert []byte) {
 	urls := []string{
+		fmt.Sprintf("%s/lean/certificate?height=%d", base, height),
 		fmt.Sprintf("%s/payload?height=%d", base, height),
 		fmt.Sprintf("%s/block?height=%d", base, height),
 	}
@@ -319,14 +339,21 @@ func fetchPayload(client *http.Client, base string, height int64) []byte {
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		_ = resp.Body.Close()
-		if p := decodeCatchupPayload(body, height); len(p) > 0 {
-			return p
+		p, c := decodeCatchupPayload(body, height)
+		if len(p) > 0 {
+			payload = p
+		}
+		if len(c) > 0 {
+			cert = c
+		}
+		if len(payload) > 0 && len(cert) > 0 {
+			return payload, cert
 		}
 	}
-	return nil
+	return payload, cert
 }
 
-func decodeCatchupPayload(body []byte, want int64) []byte {
+func decodeCatchupPayload(body []byte, want int64) (payload, cert []byte) {
 	var wrap struct {
 		Result  json.RawMessage `json:"result"`
 		Height  json.RawMessage `json:"height"`
@@ -334,16 +361,17 @@ func decodeCatchupPayload(body []byte, want int64) []byte {
 		Block   json.RawMessage `json:"block"`
 	}
 	if json.Unmarshal(body, &wrap) != nil {
-		return nil
+		return nil, nil
 	}
 	raw := wrap.Result
 	if len(raw) == 0 {
 		raw = body
 	}
 	var res struct {
-		Payload string `json:"payload"`
-		Height  string `json:"height"`
-		Block   struct {
+		Payload     string `json:"payload"`
+		Certificate string `json:"certificate"`
+		Height      string `json:"height"`
+		Block       struct {
 			Header struct {
 				Height string `json:"height"`
 			} `json:"header"`
@@ -353,7 +381,7 @@ func decodeCatchupPayload(body []byte, want int64) []byte {
 		} `json:"block"`
 	}
 	if json.Unmarshal(raw, &res) != nil {
-		return nil
+		return nil, nil
 	}
 	hs := res.Height
 	if hs == "" {
@@ -363,24 +391,27 @@ func decodeCatchupPayload(body []byte, want int64) []byte {
 		var h int64
 		fmt.Sscanf(hs, "%d", &h)
 		if h != 0 && h != want {
-			return nil
+			return nil, nil
 		}
 	}
 	b64 := res.Payload
 	if b64 == "" && len(res.Block.Data.Txs) > 0 {
 		b64 = res.Block.Data.Txs[0]
 	}
-	if b64 == "" {
-		return nil
+	if b64 != "" {
+		p, err := base64.StdEncoding.DecodeString(b64)
+		if err == nil {
+			if _, err := cwffi.DecodePayload(p); err == nil {
+				payload = p
+			}
+		}
 	}
-	p, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return nil
+	if res.Certificate != "" {
+		if c, err := base64.StdEncoding.DecodeString(res.Certificate); err == nil {
+			cert = c
+		}
 	}
-	if _, err := cwffi.DecodePayload(p); err != nil {
-		return nil
-	}
-	return p
+	return payload, cert
 }
 
 func maybeInitChain(app types.Application, cfg *cmtcfg.Config) error {

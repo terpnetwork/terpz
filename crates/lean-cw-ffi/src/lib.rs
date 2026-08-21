@@ -8,9 +8,11 @@
 
 pub mod automaton;
 pub mod callbacks;
+pub mod cert;
 pub mod engine;
 pub mod ffi;
 pub mod payload;
+pub mod scheme;
 
 pub use payload::Payload;
 
@@ -27,7 +29,12 @@ pub struct lean_cw_cfg {
     pub namespace: *const std::os::raw::c_char,
     pub participants: *const u8,
     pub participants_len: usize,
+    pub weights: *const u64,
+    pub weights_len: usize,
     pub epoch: u64,
+    pub floor_path: *const std::os::raw::c_char,
+    pub floor_cert: *const u8,
+    pub floor_cert_len: usize,
 }
 
 unsafe impl Send for lean_cw_cfg {}

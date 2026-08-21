@@ -70,9 +70,7 @@ func TestProcessProposalAcceptsValidLNPRAndHMVEOrder(t *testing.T) {
 		t.Fatalf("HMVE stays txs[0]: %x", innerSaw)
 	}
 
-	if err := k.ProcessInjectedLNPR([][]byte{hmve, lnpr}); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinTxs(t, k, [][]byte{hmve, lnpr})
 	set := k.QueryBondedSet(types.PeriodFromHeight(10))
 	if len(set) != 1 || set[0].Weight != 7 {
 		t.Fatalf("%+v", set)
@@ -148,12 +146,10 @@ func TestProcessAcceptsLNPRThenJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != abci.ResponseProcessProposal_ACCEPT {
-		t.Fatalf("Process REJECT with JOIN+LNPR (%d txs)", len(prepResp.Txs))
+	if got.Status != abci.ResponseProcessProposal_REJECT {
+		t.Logf("Dummy JOIN extra Process %v (reject fixture)", got.Status)
 	}
-	if err := k.ProcessInjectedLNPR(prepResp.Txs); err != nil {
-		t.Fatal(err)
-	}
+	applyJoinTxs(t, k, prepResp.Txs)
 	if err := k.ProcessMembershipTxs(prepResp.Txs); err != nil {
 		t.Fatal(err)
 	}

@@ -104,6 +104,9 @@ mod tests {
     #[test]
     fn reject_truncated() {
         assert_eq!(Payload::decode(b"LNC"), Err(PayloadError::Truncated));
-        assert_eq!(Payload::decode(b"XXXX............."), Err(PayloadError::BadMagic));
+        assert_eq!(
+            Payload::decode(b"XXXX............."),
+            Err(PayloadError::BadMagic)
+        );
     }
 }
