@@ -1,6 +1,6 @@
 module github.com/terpnetwork/terp-core/v6
 
-go 1.25.9
+go 1.26.0
 
 // for verifiable dependencies:
 // go mod edit -replace github.com/CosmWasm/wasmd=github.com/permissionlessweb/wasmd@a2cad08268f814d7d958baae8a52b5860398ea13
@@ -52,7 +52,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
