@@ -1,0 +1,42 @@
+---
+title: Glossary
+description: "Product words used in these pages. Present tense. Each term is defined on first use."
+---
+
+# Glossary
+
+**Terp Lean** is a research product that decides who may vote from membership, not from how many tokens someone staked. These pages use the words below. Each page also defines a term the first time it appears.
+
+The binary is `terpz`. The image is `terpnetwork/terp-core:terpz-lean`. The public Terp chain (`terpd`) is a different product. You run this locally. It is not a public Lean network.
+
+## Product words
+
+| Word | Meaning |
+|---|---|
+| **Membership** | Who may vote when Lean owns the validator set: a bitfield of participants plus each member's effective balance. |
+| **Bitfield** | A packed row of bits. One bit per participant. A set bit means that member is in. |
+| **Effective balance** | Voting weight Lean assigns a member. Not “how many tokens this account staked.” |
+| **JOIN** | Add a member. A new JOIN enters with small voting power so a silent joiner cannot stall the chain. |
+| **LEAVE** | Remove a member. |
+| **LNPR** | Lean proof record. The block proposer injects it. JOIN and LEAVE travel as subjects on it. Users cannot put it in the mempool. |
+| **Dummy** | Named fake proof with magic `DSTW`. Always fails. Not STWO. Not an SSLE proof. |
+| **STWO** | Named real proof: prover 2, field **M31** (curve id 5). Produced off-chain. |
+| **App VM** | The in-process runtime that verifies STWO. Also called **zk-wasmvm**: a CosmWasm host with a proof-check API. The native module calls that API. This is not a stored CosmWasm contract `sudo`. |
+| **Fold** | Many statements checked with one STWO verify. Concatenating Dummy proofs is not a fold. |
+| **SSLE** | Single secret leader election. Implemented as **hide-until-block**. Ships in the research image. |
+| **Ticket** | The public SSLE schedule entry. It is not the proposer's address. Tickets are unique per height. |
+| **Hashmerchant** | An older proposer-injected record (prefix `HMVE`). Lean does not replace it. When it is present, LNPR sits after it. |
+
+## Status words
+
+Use these three. Do not invent extra badges.
+
+| Say | Means |
+|---|---|
+| **shipped** | It is in `terpz`. You can run it locally. |
+| **not built yet** | The code does not do this. Name the missing piece. |
+| **not on the public network** | The public Terp chain (`terpd`) does not run this. There is no public Lean network. |
+
+Name what is missing. Daily re-anon keys, million-validator period proofs, and a public Lean network are not built yet.
+
+See [Status](/research/status) for the scan table. See [Verify](/research/verify) to run the image.

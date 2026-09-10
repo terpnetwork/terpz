@@ -205,4 +205,5 @@ terpz-linux: build-check-version go.sum
 docker-terpz-linux: terpz-linux
 	@test -x $(BUILDDIR)/lean-stwo-fold || (echo "missing musl $(BUILDDIR)/lean-stwo-fold"; exit 1)
 	@test -x $(BUILDDIR)/lean-ssle || (echo "missing musl $(BUILDDIR)/lean-ssle"; exit 1)
+	@test -x $(BUILDDIR)/lean-valset-air || (echo "missing musl $(BUILDDIR)/lean-valset-air"; exit 1)
 	docker build --platform linux/arm64 -f Dockerfile.terpz -t terpnetwork/terp-core:terpz-lean .

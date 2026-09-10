@@ -265,6 +265,7 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 		raw++
 	}
 	known := k.knownSubjectSet(blob.Period)
+	extraIdx := uint64(k.nextDepositIndex())
 	for i, s := range blob.Subjects {
 		if bytes.Contains(s.Proof, []byte("DSTW")) {
 			if fold != nil {
@@ -297,8 +298,10 @@ func (k *Keeper) verifyLNPR(blob types.LNPRBlob, skipCrypto bool) error {
 			if len(s.Proof) > types.MaxProofBytes {
 				return errProof("proof too large")
 			}
-			if err := k.verifySubjectProof(blob.Period, uint64(i), s, roots); err != nil {
-				return err
+			idx := extraIdx
+			extraIdx++
+			if err := k.verifySubjectProof(blob.Period, idx, s, roots); err != nil {
+				return fmt.Errorf("leanval: JOIN extra STWO period=%d deposit=%d row=%d w=%d: %w", blob.Period, idx, i, s.Weight, err)
 			}
 			continue
 		}

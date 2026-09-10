@@ -5,6 +5,7 @@ RUN apk add --no-cache ca-certificates libgcc libstdc++ libc6-compat
 COPY build/terpz /usr/local/bin/terpz
 COPY build/lean-stwo-fold /usr/local/bin/lean-stwo-fold
 COPY build/lean-ssle /usr/local/bin/lean-ssle
+COPY build/lean-valset-air /usr/local/bin/lean-valset-air
 # Some ICT helpers still exec $BIN; keep a second name only inside this image.
 RUN ln -sf /usr/local/bin/terpz /usr/local/bin/terpd
 EXPOSE 1317 26656 26657 9090

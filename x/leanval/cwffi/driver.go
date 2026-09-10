@@ -41,6 +41,7 @@ type Driver struct {
 	lastCertRaw []byte
 	lastPks     []byte
 	lastWeights []uint64
+	lastPayload []byte
 	mempool     [][]byte
 	committed   map[int64]committedBlock
 	storeQuery  StoreQuery
@@ -148,15 +149,17 @@ func (d *Driver) Propose(epoch, view uint64, _parent []byte) (digest, payload []
 	p := Payload{Height: h, Txs: resp.Txs}
 	raw := p.Encode()
 	sum := sha256.Sum256(raw)
+	d.lastPayload = append([]byte(nil), raw...)
 	return sum[:], raw, nil
 }
 
 func (d *Driver) Verify(_epoch, _view uint64, digest, payload []byte) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.lastPayload = append([]byte(nil), payload...)
 	if containsDSTW(payload) {
 		// Dummy DSTW is a reject fixture on Process/Certify/JOIN extras.
-		// Process still decides LNPR; this is belt-and-suspenders.
+		return false
 	}
 	p, err := DecodePayload(payload)
 	if err != nil {
@@ -180,6 +183,11 @@ func (d *Driver) Verify(_epoch, _view uint64, digest, payload []byte) bool {
 }
 
 func (d *Driver) Certify(_epoch, _view uint64, _digest []byte) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if containsDSTW(d.lastPayload) {
+		return false
+	}
 	return true
 }
 

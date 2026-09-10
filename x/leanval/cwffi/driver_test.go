@@ -96,6 +96,20 @@ func TestProposeCallsPrepare(t *testing.T) {
 	}
 }
 
+func TestVerifyAndCertifyRejectDummyDSTW(t *testing.T) {
+	app := &fakeApp{}
+	d := NewDriver(app, "lean", nil)
+	p := Payload{Height: 1, Txs: [][]byte{[]byte("DSTW")}}
+	raw := p.Encode()
+	sum := sha256.Sum256(raw)
+	if d.Verify(0, 1, sum[:], raw) {
+		t.Fatal("Process must reject Dummy DSTW payload")
+	}
+	if d.Certify(0, 1, sum[:]) {
+		t.Fatal("Certify must reject Dummy DSTW payload")
+	}
+}
+
 func TestVerifyRejectsProcessReject(t *testing.T) {
 	app := &fakeApp{}
 	app.process = func(*abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {

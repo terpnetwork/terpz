@@ -106,3 +106,7 @@ crates/lean-cw-ffi/target/
 crates/lean-cw-ffi/target-musl/
 crates/lean-cw-ffi/target-musl-198/
 /terpz
+
+# Lean product MDX (terp-docs imports at compile time)
+!crates/lean-cw-ffi/docs/
+!crates/lean-cw-ffi/docs/**

@@ -94,6 +94,16 @@ func verifyValsetStwo(proof []byte, period, index uint64, eb uint8, _ []byte) er
 	if index >= (1 << 40) {
 		return fmt.Errorf("leanval: valset AIR deposit index exceeds 5 bytes")
 	}
+	args := []string{"verify", strconv.FormatUint(period, 10), indexToHex5(index), strconv.FormatUint(uint64(eb), 10)}
+	if bin := leanValsetAirBin(); bin != "" {
+		cmd := exec.Command(bin, args...)
+		cmd.Stdin = bytes.NewReader(proof)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("leanval: valset verify: %w: %s", err, bytes.TrimSpace(out))
+		}
+		return nil
+	}
 	dir, err := leanStwoCrateDir()
 	if err != nil {
 		return err
@@ -101,7 +111,7 @@ func verifyValsetStwo(proof []byte, period, index uint64, eb uint8, _ []byte) er
 	cmd := exec.Command(
 		"cargo", "run", "--offline", "--quiet", "--features", "real-stwo",
 		"--bin", "lean-valset-air", "--",
-		"verify", strconv.FormatUint(period, 10), indexToHex5(index), strconv.FormatUint(uint64(eb), 10),
+		args[0], args[1], args[2], args[3],
 	)
 	cmd.Dir = dir
 	cmd.Stdin = bytes.NewReader(proof)

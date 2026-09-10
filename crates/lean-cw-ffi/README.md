@@ -9,3 +9,7 @@ C ABI around Commonware `simplex::Engine` for Lean AppState.
 - JOIN/LEAV remain LNPR subjects
 
 Start with `LEAN_CONSENSUS=commonware`. Default remains Comet.
+
+## Product docs
+
+Reader MDX lives in [`docs/pages`](docs/pages). Terp Docs Vocs imports it at compile time.

@@ -1,0 +1,35 @@
+---
+title: Resources
+description: "Papers behind Terp Lean membership, STWO proofs, and implemented SSLE hide-until-block."
+---
+
+# Resources
+
+**Terp Lean** is a research product that lets a chain decide who may vote from **membership** (a bitfield of participants plus each member's **effective balance**), not from how many tokens they staked. These papers are why those objects look the way they do.
+
+Each line is a title, a public link, and why it matters here. The public Terp chain (`terpd`) is a different product. You run `terpz` locally.
+
+## Papers
+
+- [Vitalik, *The Extremely Lean Chain*](https://ethresear.ch/t/the-extremely-lean-chain/25369) — the objects this product implements: deposit index, effective balance, participation bitfields, period proofs, and SSLE.
+- [Jiang thread comments](https://ethresear.ch/t/the-extremely-lean-chain/25369) — public inputs are bitfields plus state roots. Aggregate by composing the polynomial, then one combined proof check (FRI).
+- [SSLE, eprint 2020/025](https://eprint.iacr.org/2020/025.pdf) — single secret leader election. **Implemented in this product** as hide-until-block: the public schedule is a ticket, not the proposer's address. The committed block reveals the proposer with a STWO SSLE proof. Dummy is not an SSLE proof. Tickets are unique per height.
+- [Circle STARK, eprint 2024/278](https://eprint.iacr.org/2024/278) and [starkware-libs/stwo](https://github.com/starkware-libs/stwo) — why a real proof is named **STWO**, prover 2, field **M31** (curve id 5), and not a generic STARK enum. Dummy (magic `DSTW`) is not STWO.
+- [ShieldedLabs zebra-crosslink#283](https://github.com/ShieldedLabs/zebra-crosslink/pull/283) — nil-precommit / resample. Round-adapter research for later one-message rounds. Not this product's live round type.
+- [EIP-8068](https://eips.ethereum.org/EIPS/eip-8068) — effective-balance hysteresis. Membership weight should not chatter every slot.
+- [EIP-8222](https://eips.ethereum.org/EIPS/eip-8222) — hidden withdrawal credentials. Analog for keeping withdrawal data off the consensus row.
+- [valargroup/vote-sdk](https://github.com/valargroup/vote-sdk) — citation for proposer inject plus process-reject. Users cannot put LNPR or SSLE in the mempool. Not a Lean subsystem.
+
+## How they show up in this product
+
+| Paper object | In Terp Lean |
+|---|---|
+| Bitfield + index + effective balance | Membership. Who may vote when Lean owns the validator set. |
+| JOIN / LEAVE | Subjects on a proposer-injected **LNPR** (Lean proof record). |
+| Dummy checksum | Magic `DSTW`. Always fails. Not STWO. |
+| Named STWO fold | Prover 2, M31 (curve id 5). Proved off-chain. Verified in-process by the app VM host API. Not a stored CosmWasm contract `sudo`. |
+| SSLE | Hide-until-block. Shipped in the research image. See [SSLE](/research/protocol/ssle). |
+
+This is a local research image (`terpz`, `terpnetwork/terp-core:terpz-lean`).
+
+See [Verify](/research/verify) to run the image checks. See [Fold](/research/protocol/fold) for Dummy versus STWO.
