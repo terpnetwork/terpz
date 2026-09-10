@@ -1,0 +1,17 @@
+[package]
+name = "lean-aggregate"
+version = "0.1.0"
+edition = "2021"
+description = "Jiang same-statement FRI compose: N period/vote proofs → one verify (pack loop_id=aggregate)"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "lean_aggregate"
+path = "src/lib.rs"
+
+[dependencies]
+sha2 = "0.10"
+
+[dev-dependencies]
+sha2 = "0.10"

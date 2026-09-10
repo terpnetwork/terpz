@@ -110,3 +110,7 @@ crates/lean-cw-ffi/target-musl-198/
 # Lean product MDX (terp-docs imports at compile time)
 !crates/lean-cw-ffi/docs/
 !crates/lean-cw-ffi/docs/**
+
+# Optional Jiang FRI compose sidecar (not wired into terpz)
+!crates/lean-aggregate/
+!crates/lean-aggregate/**
