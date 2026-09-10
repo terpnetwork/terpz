@@ -76,7 +76,7 @@ jobs:
           fetch-depth: 1
 
       - name: Download image
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.IMAGE_NAME }}
           path: /tmp
